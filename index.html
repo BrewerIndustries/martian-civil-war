@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Martian Civil War</title>
-<meta name="description" content="Red Martians against Green. Pick a house, load the siege engine, and bring their redoubts down.">
+<meta name="description" content="Red Martians against Green. An artillery duel on destructible Martian ground — shoot over the ridge, or tunnel through it.">
 <meta name="theme-color" content="#1a0f0c">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔴</text></svg>">
 <link rel="stylesheet" href="src/style.css">
@@ -14,104 +14,136 @@
 <div id="app">
   <canvas id="stage"></canvas>
 
-  <!-- Heads-up display -->
   <header id="hud">
     <div class="hud-left">
-      <button id="btn-menu" class="icon-btn" title="Level select (Esc)">☰</button>
+      <button id="btn-menu" class="icon-btn" title="Campaign map (Esc)">☰</button>
       <div class="level-tag">
-        <span id="hud-level">Assault 1</span>
-        <span id="hud-name">Border Outpost</span>
+        <span id="hud-level">Battle 1</span>
+        <span id="hud-name">First Contact</span>
       </div>
     </div>
 
     <div class="hud-mid">
-      <div id="ammo-rack" class="ammo-rack"></div>
+      <div id="weapon-rack" class="ammo-rack"></div>
     </div>
 
     <div class="hud-right">
+      <div class="score-box">
+        <span class="score-label">Credits</span>
+        <span id="hud-credits">0</span>
+      </div>
       <div class="score-box">
         <span class="score-label">Score</span>
         <span id="hud-score">0</span>
       </div>
       <button id="btn-mute" class="icon-btn" title="Mute (M)">🔊</button>
-      <button id="btn-retry" class="icon-btn" title="Restart level (R)">↻</button>
+      <button id="btn-retry" class="icon-btn" title="Restart battle (R)">↻</button>
     </div>
   </header>
 
-  <div id="target-counter" class="target-counter"></div>
+  <!-- firing solution -->
+  <div id="readout" class="readout">
+    <span class="ro"><b id="ro-angle">42°</b><i>elev</i></span>
+    <span class="ro"><b id="ro-power">70%</b><i>charge</i></span>
+    <span class="ro wind"><b id="ro-wind">—</b><i>wind</i></span>
+    <span class="ro"><b id="ro-turn">Your shot</b><i>turn</i></span>
+  </div>
 
-  <!-- Contextual hint at the catapult -->
-  <div id="hint" class="hint">Drag back from the catapult to aim &amp; fire</div>
+  <div id="hint" class="hint">Drag back from your platform to aim &amp; fire</div>
 
-  <!-- Level complete / failed -->
+  <!-- battle over -->
   <div id="result" class="overlay hidden">
     <div class="panel">
-      <h2 id="result-title">Redoubt Taken!</h2>
+      <h2 id="result-title">Enemy Platform Destroyed</h2>
       <div id="result-stars" class="stars"></div>
       <div class="result-rows">
-        <div class="row"><span>Demolition</span><b id="rs-demo">0</b></div>
-        <div class="row"><span>Shots saved</span><b id="rs-shots">0</b></div>
+        <div class="row"><span>Damage dealt</span><b id="rs-damage">0</b></div>
+        <div class="row"><span>Hull remaining</span><b id="rs-hull">0</b></div>
+        <div class="row"><span>Rapid victory</span><b id="rs-speed">0</b></div>
         <div class="row total"><span>Total</span><b id="rs-total">0</b></div>
-        <div class="row best"><span>Best</span><b id="rs-best">0</b></div>
+        <div class="row credit"><span>Salvage banked</span><b id="rs-credits">0</b></div>
       </div>
       <p id="result-msg" class="result-msg"></p>
       <div class="panel-actions">
         <button id="btn-replay" class="btn ghost">Retry</button>
-        <button id="btn-next" class="btn primary">Next Assault</button>
+        <button id="btn-armory-2" class="btn ghost">Armory</button>
+        <button id="btn-next" class="btn primary">Next Battle</button>
       </div>
     </div>
   </div>
 
-  <!-- Level select -->
+  <!-- armory -->
+  <div id="armory" class="overlay hidden">
+    <div class="panel wide">
+      <div class="panel-head">
+        <div>
+          <h2>Armory</h2>
+          <p class="sub">Mounts are permanent — bought once, yours for every battle after.
+            <b id="armory-credits">0</b> credits</p>
+        </div>
+        <button id="btn-close-armory" class="icon-btn">✕</button>
+      </div>
+      <div id="weapon-shop" class="weapon-shop"></div>
+      <div class="panel-foot">
+        <span class="legend">Salvage is banked when you <b>beat your best score</b> on a battle — replay to earn more.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- campaign map -->
   <div id="levels" class="overlay hidden">
     <div class="panel wide">
       <div class="panel-head">
         <div>
           <h2>Campaign</h2>
-          <p class="sub">Fighting for <b id="house-name">the Red Martians</b> · <span id="total-stars">0</span> ★ earned</p>
+          <p class="sub">Fighting for <b id="house-name">the Red Martians</b> ·
+            <span id="total-stars">0</span> ★ · <b id="map-credits">0</b> credits</p>
         </div>
         <button id="btn-close-levels" class="icon-btn">✕</button>
       </div>
       <div id="level-grid" class="level-grid"></div>
       <div class="panel-foot">
         <div class="foot-actions">
+          <button id="btn-armory" class="btn tiny primary">Armory</button>
           <button id="btn-switch" class="btn tiny ghost">Change side</button>
           <button id="btn-wipe" class="btn tiny ghost">Reset progress</button>
         </div>
-        <span class="legend"><b>Drag</b> to aim · <b>Space</b> for the shell's trick · <b>R</b> retry · <b>Esc</b> map</span>
+        <span class="legend"><b>Drag</b> aim · <b>←→</b> elev · <b>↑↓</b> charge ·
+          <b>Enter</b> fire · <b>Space</b> mount trick · <b>1–6</b> select</span>
       </div>
     </div>
   </div>
 
-  <!-- Title screen: choose a house -->
+  <!-- title -->
   <div id="title" class="overlay">
     <div class="title-card">
       <p class="eyebrow">Barsoom · the dry sea bottoms</p>
       <h1>Martian<span>Civil War</span></h1>
-      <p class="tagline">Two houses, one dying world, and a great deal of masonry in the way.</p>
+      <p class="tagline">Two houses, one dying world, and a ridge between you and them.</p>
 
       <div class="faction-picker">
         <button class="faction-card red" data-faction="red">
-          <span class="crest">☉</span>
+          <span class="crest">◉</span>
           <span class="fname">Red Martians</span>
           <span class="fblurb">Canal-builders of the dead seas. Disciplined, and out of patience.</span>
           <span class="pick">Fight for the Red</span>
         </button>
         <button class="faction-card green" data-faction="green">
-          <span class="crest">⚔️</span>
+          <span class="crest">▲</span>
           <span class="fname">Green Martians</span>
           <span class="fblurb">Horde of the dry sea bottoms. Six limbs, no forgiveness.</span>
           <span class="pick">Fight for the Green</span>
         </button>
       </div>
 
-      <p class="credit">Pick a house · drag to aim · limited ordnance · you can switch sides later</p>
+      <p class="credit">Artillery duel · destructible ground · shoot over the ridge or bore through it</p>
     </div>
   </div>
+</div>
 
-<script src="vendor/matter.min.js"></script>
 <script src="src/audio.js"></script>
 <script src="src/levels.js"></script>
+<script src="src/terrain.js"></script>
 <script src="src/render.js"></script>
 <script src="src/game.js"></script>
 <script src="src/ui.js"></script>

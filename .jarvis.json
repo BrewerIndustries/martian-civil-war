@@ -1,12 +1,25 @@
 {
   "id": "martian-civil-war",
   "name": "Martian Civil War",
-  "description": "Red Martians against Green. Pick a house, crew the siege engine, and bring the enemy's redoubts down. A physics demolition puzzle: drag to aim, limited ordnance, twelve hand-built assaults with star ratings.",
+  "description": "Artillery duel on a dying Mars \u2014 Red Martians against Green. Pick a house, crew an assault platform, and trade shots across fully destructible terrain: arc over the ridge or bore a tunnel through it. 12 battles, an armory of permanent weapon mounts, wind, and an enemy gunner that ranges you better as you go.",
   "category": "games",
-  "tech": ["Vanilla JS", "HTML5 Canvas", "Matter.js", "static site", "GitHub Pages"],
-  "status": { "prod": "in_progress", "dev": "live" },
+  "tech": [
+    "Vanilla JS",
+    "HTML5 Canvas",
+    "bitmask destructible terrain",
+    "no dependencies",
+    "static site"
+  ],
+  "status": {
+    "prod": "in_progress",
+    "dev": "live"
+  },
   "deploy": {
-    "prod": { "url": "https://martian-civil-war.dabrewer.dev/" },
-    "dev": { "url": "https://martian-civil-war.dabrewer.dev/dev/" }
+    "prod": {
+      "url": "https://martian-civil-war.dabrewer.dev/"
+    },
+    "dev": {
+      "url": "https://martian-civil-war.dabrewer.dev/dev/"
+    }
   }
 }

@@ -93,7 +93,8 @@ html, body {
 }
 .ammo {
   position: relative;
-  width: 30px; height: 30px; border-radius: 50%;
+  width: 32px; height: 32px; border-radius: 50%;
+  padding: 0; font: inherit; cursor: pointer; color: var(--ink);
   display: grid; place-items: center;
   font-size: 15px;
   background: #3b241c;
@@ -105,7 +106,7 @@ html, body {
   box-shadow: 0 0 0 3px rgba(240, 176, 74, .18), 0 4px 14px rgba(240, 176, 74, .3);
   transform: scale(1.22);
 }
-.ammo.spent { opacity: .26; filter: grayscale(1); transform: scale(.82); }
+.ammo:hover { border-color: var(--faction); transform: translateY(-1px); }
 .ammo-name {
   font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
   color: var(--ink-dim); padding-left: 5px; min-width: 66px;
@@ -324,4 +325,79 @@ html, body {
 @media (max-width: 720px) {
   .faction-card { padding: 14px; }
   .faction-card .fblurb { display: none; }
+}
+
+
+/* ---------- firing solution readout ---------- */
+
+.readout {
+  position: absolute; top: 66px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 2px; align-items: stretch;
+  padding: 4px; border-radius: 12px;
+  background: rgba(30, 18, 14, .74);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.readout .ro {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 74px; padding: 3px 10px;
+  border-right: 1px solid var(--line);
+}
+.readout .ro:last-child { border-right: 0; }
+.readout .ro b {
+  font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15;
+}
+.readout .ro i {
+  font-style: normal; font-size: 9px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--ink-dim);
+}
+.readout .wind b { color: #8fd0ff; }
+
+/* ---------- armory ---------- */
+
+.weapon-shop {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 11px;
+  max-height: min(56vh, 460px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.weapon-shop::-webkit-scrollbar { width: 8px; }
+.weapon-shop::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+
+.shop-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.shop-card.owned { border-color: rgba(240, 176, 74, .38); }
+.shop-card.locked { opacity: .5; }
+.shop-icon {
+  flex: 0 0 auto;
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-size: 19px;
+  background: #3b241c; border: 2px solid #58382b;
+}
+.shop-card.owned .shop-icon { border-color: var(--gold); }
+.shop-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.shop-name { font-size: 14px; font-weight: 700; }
+.shop-blurb { font-size: 11.5px; line-height: 1.4; color: var(--ink-dim); }
+.shop-stats {
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #8a7264;
+}
+.shop-card .btn { flex: 0 0 auto; white-space: nowrap; }
+.shop-card .btn:disabled { cursor: default; transform: none; }
+
+.result-rows .credit b { color: var(--good); }
+
+@media (max-width: 720px) {
+  .readout { top: 58px; }
+  .readout .ro { min-width: 58px; padding: 2px 6px; }
+  .readout .ro b { font-size: 13px; }
+  .weapon-shop { grid-template-columns: 1fr; }
 }

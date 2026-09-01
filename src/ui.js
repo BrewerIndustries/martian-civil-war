@@ -1,21 +1,28 @@
-/* Martian Civil War — DOM layer: HUD, overlays, campaign map and saved progress. */
+/* Martian Civil War — DOM layer: HUD, armory, campaign map, saved progress. */
 
 const UI = (() => {
-  const KEY = 'martian-civil-war:v1';
+  const KEY = 'martian-civil-war:v2';
   const $ = (id) => document.getElementById(id);
 
   let game = null;
-  let progress = { stars: {}, best: {}, faction: 'red' };
-  let lastResult = null;
+  let progress = { stars: {}, best: {}, faction: 'red', credits: 0, owned: [STARTING_WEAPON] };
 
   function loadProgress() {
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const p = JSON.parse(raw);
-        progress = { stars: p.stars || {}, best: p.best || {}, faction: FACTIONS[p.faction] ? p.faction : 'red' };
+        progress = {
+          stars: p.stars || {},
+          best: p.best || {},
+          faction: FACTIONS[p.faction] ? p.faction : 'red',
+          credits: Number(p.credits) || 0,
+          owned: Array.isArray(p.owned) && p.owned.length
+            ? p.owned.filter((w) => WEAPONS[w]) : [STARTING_WEAPON],
+        };
+        if (!progress.owned.includes(STARTING_WEAPON)) progress.owned.push(STARTING_WEAPON);
       }
-    } catch (e) { /* private mode / disabled storage — play without saving */ }
+    } catch (e) { /* private mode — play without saving */ }
   }
 
   function saveProgress() {
@@ -25,7 +32,8 @@ const UI = (() => {
   const starsFor = (i) => progress.stars[i] || 0;
   const bestFor = (i) => progress.best[i] || 0;
   const unlocked = (i) => i === 0 || starsFor(i - 1) > 0;
-  const totalStars = () => LEVELS.reduce((n, _, i) => n + starsFor(i), 0);
+  const totalStars = () => BATTLES.reduce((n, _, i) => n + starsFor(i), 0);
+  const fmt = (n) => Math.round(n).toLocaleString();
 
   /* ---------- house ---------- */
 
@@ -43,164 +51,218 @@ const UI = (() => {
   /* ---------- HUD ---------- */
 
   function hud(s) {
-    $('hud-level').textContent = `Assault ${s.level + 1}`;
+    $('hud-level').textContent = `Battle ${s.level + 1}`;
     $('hud-name').textContent = s.name;
-    $('hud-score').textContent = s.score.toLocaleString();
+    $('hud-score').textContent = fmt(s.score);
+    $('hud-credits').textContent = fmt(progress.credits);
 
-    const rack = $('ammo-rack');
-    const spent = s.used;
-    const all = LEVELS[s.level].ammo;
-    let html = '';
-    all.forEach((kind, i) => {
-      const cls = i < spent ? 'ammo spent' : i === spent ? 'ammo current' : 'ammo';
-      html += `<span class="${cls}" title="${AMMO[kind].name}">${AMMO[kind].icon}</span>`;
+    // mounted weapons, selectable
+    const rack = $('weapon-rack');
+    const yours = weaponList().filter((w) => s.owned.includes(w));
+    rack.innerHTML = yours.map((w, i) => {
+      const cls = w === s.weapon ? 'ammo current' : 'ammo';
+      return `<button class="${cls}" data-weapon="${w}" title="${WEAPONS[w].name} (${i + 1})">${WEAPONS[w].icon}</button>`;
+    }).join('') +
+      `<span class="ammo-name">${s.canAbility ? 'Space!' : WEAPONS[s.weapon].name}</span>`;
+    rack.querySelectorAll('[data-weapon]').forEach((b) => {
+      b.onclick = () => game.selectWeapon(b.dataset.weapon);
     });
-    const next = all[spent];
-    const label = s.canAbility ? 'Space!' : next ? AMMO[next].name : 'Out of ammo';
-    html += `<span class="ammo-name">${label}</span>`;
-    rack.innerHTML = html;
 
-    const foe = FACTIONS[otherFaction(progress.faction)].short;
-    $('target-counter').innerHTML = s.targets > 0
-      ? `${foe} defenders <b>${s.targets}</b>`
-      : `<b>Redoubt cleared</b>`;
+    $('ro-angle').textContent = `${Math.round(s.angle)}°`;
+    $('ro-power').textContent = `${Math.round(s.power * 100)}%`;
+
+    const w = s.wind || 0;
+    const strength = Math.abs(w);
+    $('ro-wind').textContent = strength < 0.008
+      ? 'calm'
+      : `${w > 0 ? '▶' : '◀'} ${(strength * 100).toFixed(0)}`;
+
+    $('ro-turn').textContent =
+      s.state === 'over' ? '—'
+      : s.state === 'enemy' || (s.state === 'flight' && !s.canAbility) ? 'Incoming'
+      : s.state === 'flight' ? 'In flight'
+      : 'Your shot';
   }
 
-  /* ---------- result panel ---------- */
+  /* ---------- armory ---------- */
+
+  function renderShop() {
+    $('armory-credits').textContent = fmt(progress.credits);
+    const shop = $('weapon-shop');
+    shop.innerHTML = '';
+    weaponList().forEach((id) => {
+      const w = WEAPONS[id];
+      const owned = progress.owned.includes(id);
+      const affordable = progress.credits >= w.cost;
+      const card = document.createElement('div');
+      card.className = 'shop-card' + (owned ? ' owned' : affordable ? '' : ' locked');
+      card.innerHTML =
+        `<span class="shop-icon">${w.icon}</span>` +
+        `<div class="shop-body">` +
+          `<span class="shop-name">${w.name}</span>` +
+          `<span class="shop-blurb">${w.blurb}</span>` +
+          `<span class="shop-stats">${w.damage} dmg · ${w.blast} blast · ${w.dig} dig` +
+            `${w.penetrate ? ' · bores rock' : ''}</span>` +
+        `</div>`;
+      const btn = document.createElement('button');
+      btn.className = 'btn tiny ' + (owned ? 'ghost' : affordable ? 'primary' : 'ghost');
+      btn.textContent = owned ? 'Mounted' : `${fmt(w.cost)} cr`;
+      btn.disabled = owned || !affordable;
+      btn.onclick = () => buy(id);
+      card.appendChild(btn);
+      shop.appendChild(card);
+    });
+  }
+
+  function buy(id) {
+    const w = WEAPONS[id];
+    if (progress.owned.includes(id) || progress.credits < w.cost) return;
+    progress.credits -= w.cost;
+    progress.owned.push(id);
+    saveProgress();
+    game.setLoadout(progress.owned);
+    Sfx.star(1);
+    renderShop();
+    $('hud-credits').textContent = fmt(progress.credits);
+  }
+
+  /* ---------- result ---------- */
 
   function showResult(res) {
-    lastResult = res;
-    const prevStars = starsFor(res.level);
     const prevBest = bestFor(res.level);
+    let earned = 0;
 
     if (res.won) {
-      if (res.stars > prevStars) progress.stars[res.level] = res.stars;
+      if (res.stars > starsFor(res.level)) progress.stars[res.level] = res.stars;
+      // Salvage is banked on improvement only, so a battle can't be farmed.
+      earned = Math.max(0, res.total - prevBest);
       if (res.total > prevBest) progress.best[res.level] = res.total;
+      progress.credits += earned;
       saveProgress();
     }
 
-    $('result-title').textContent = res.won ? 'Redoubt Taken!' : 'Out of Ordnance';
-    $('rs-demo').textContent = res.demolition.toLocaleString();
-    $('rs-shots').textContent = res.won ? `${res.saved} × ${(5000).toLocaleString()}` : '—';
-    $('rs-total').textContent = res.total.toLocaleString();
-    $('rs-best').textContent = Math.max(prevBest, res.won ? res.total : 0).toLocaleString();
+    $('result-title').textContent = res.won ? 'Enemy Platform Destroyed' : 'Platform Lost';
+    $('rs-damage').textContent = fmt(res.damage);
+    $('rs-hull').textContent = res.won ? `${res.hpLeft} × 120` : '—';
+    $('rs-speed').textContent = res.won ? fmt(res.speedBonus) : '—';
+    $('rs-total').textContent = fmt(res.total);
+    $('rs-credits').textContent = earned > 0 ? `+${fmt(earned)}` : '—';
 
-    const msgs = res.won
-      ? (res.stars === 3 ? 'Textbook siege. Not a shot wasted.'
-        : res.stars === 2 ? 'Taken — but the quartermaster noticed.'
-        : 'Ugly, effective, expensive.')
-      : 'The garrison holds. Try a different angle.';
-    $('result-msg').textContent = msgs;
+    $('result-msg').textContent = res.won
+      ? (res.stars === 3 ? 'Barely scratched. Textbook gunnery.'
+        : res.stars === 2 ? `Won it in ${res.turns} rounds, and felt every one.`
+        : 'Wreckage on both sides. But theirs is bigger.')
+      : 'Your platform is scrap. The ridge is still theirs.';
 
     const wrap = $('result-stars');
     wrap.innerHTML = '';
     for (let i = 0; i < 3; i++) {
-      const s = document.createElement('span');
-      s.className = 'star';
-      s.textContent = '★';
-      wrap.appendChild(s);
-      if (i < res.stars) {
-        setTimeout(() => {
-          s.classList.add('on', 'pop');
-          Sfx.star(i);
-        }, 420 + i * 260);
-      }
+      const st = document.createElement('span');
+      st.className = 'star';
+      st.textContent = '★';
+      wrap.appendChild(st);
+      if (i < res.stars) setTimeout(() => { st.classList.add('on', 'pop'); Sfx.star(i); }, 420 + i * 260);
     }
 
     const next = $('btn-next');
-    const hasNext = res.level + 1 < LEVELS.length;
-    next.textContent = res.won ? (hasNext ? 'Next Assault' : 'Campaign Map') : 'Retry';
+    const hasNext = res.level + 1 < BATTLES.length;
+    next.textContent = res.won ? (hasNext ? 'Next Battle' : 'Campaign Map') : 'Retry';
     next.onclick = () => {
-      Sfx.click();
-      hide('result');
+      Sfx.click(); hide('result');
       if (!res.won) game.restart();
       else if (hasNext) start(res.level + 1);
       else showLevels();
     };
     $('btn-replay').style.display = res.won ? '' : 'none';
-
     show('result');
   }
 
-  /* ---------- level select ---------- */
+  /* ---------- campaign map ---------- */
 
   function renderGrid() {
     const grid = $('level-grid');
     grid.innerHTML = '';
-    LEVELS.forEach((lv, i) => {
+    BATTLES.forEach((lv, i) => {
       const st = starsFor(i);
       const open = unlocked(i);
       const card = document.createElement('button');
       card.className = 'level-card' + (open ? '' : ' locked') + (st > 0 ? ' cleared' : '');
       card.innerHTML =
-        `<span class="n">Assault ${i + 1}</span>` +
+        `<span class="n">Battle ${i + 1}</span>` +
         `<span class="t">${lv.name}</span>` +
         `<span class="s">${[0, 1, 2].map((k) => `<span class="${k < st ? 'on' : ''}">★</span>`).join('')}</span>`;
       if (open) card.onclick = () => { Sfx.click(); hide('levels'); start(i); };
       grid.appendChild(card);
     });
     $('total-stars').textContent = totalStars();
+    $('map-credits').textContent = fmt(progress.credits);
   }
 
   function showLevels() { renderGrid(); show('levels'); }
+  function showArmory() { renderShop(); show('armory'); }
 
   const show = (id) => { $(id).classList.remove('hidden'); if (game) game.paused = true; };
   const hide = (id) => {
     $(id).classList.add('hidden');
-    const anyOpen = ['result', 'levels', 'title'].some((k) => !$(k).classList.contains('hidden'));
-    if (game && !anyOpen) game.paused = false;
+    const open = ['result', 'levels', 'title', 'armory'].some((k) => !$(k).classList.contains('hidden'));
+    if (game && !open) game.paused = false;
   };
 
   /* ---------- flow ---------- */
 
   function start(index) {
-    hide('title'); hide('result'); hide('levels');
+    ['title', 'result', 'levels', 'armory'].forEach(hide);
+    game.setLoadout(progress.owned);
     game.load(index);
     const hint = $('hint');
-    hint.textContent = LEVELS[index].tip || 'Drag back from the siege engine to aim & fire';
+    hint.textContent = BATTLES[index].tip || 'Drag back from your platform to aim & fire';
     hint.classList.remove('gone');
     clearTimeout(start._t);
-    start._t = setTimeout(() => hint.classList.add('gone'), 4200);
+    start._t = setTimeout(() => hint.classList.add('gone'), 5200);
   }
 
   function bind(g) {
     game = g;
     loadProgress();
-
     applyFaction(progress.faction);
+    game.setLoadout(progress.owned);
 
     document.querySelectorAll('.faction-card').forEach((card) => {
       card.onclick = () => {
         Sfx.unlock(); Sfx.click();
         applyFaction(card.dataset.faction);
-        const next = LEVELS.findIndex((_, i) => starsFor(i) === 0 && unlocked(i));
+        const next = BATTLES.findIndex((_, i) => starsFor(i) === 0 && unlocked(i));
         start(next === -1 ? 0 : next);
       };
     });
 
-    $('btn-switch').onclick = () => {
-      Sfx.click();
-      hide('levels');
-      show('title');
-    };
     $('btn-menu').onclick = () => { Sfx.click(); showLevels(); };
     $('btn-close-levels').onclick = () => { Sfx.click(); hide('levels'); };
+    $('btn-armory').onclick = () => { Sfx.click(); hide('levels'); showArmory(); };
+    $('btn-armory-2').onclick = () => { Sfx.click(); showArmory(); };
+    $('btn-close-armory').onclick = () => {
+      Sfx.click(); hide('armory');
+      if ($('result').classList.contains('hidden') && game.state === 'over') showLevels();
+    };
     $('btn-retry').onclick = () => { Sfx.click(); hide('result'); game.restart(); };
     $('btn-replay').onclick = () => { Sfx.click(); hide('result'); game.restart(); };
-    $('btn-mute').onclick = (e) => {
-      const m = Sfx.toggleMute();
-      e.currentTarget.textContent = m ? '🔇' : '🔊';
-    };
+    $('btn-switch').onclick = () => { Sfx.click(); hide('levels'); show('title'); };
+    $('btn-mute').onclick = (e) => { e.currentTarget.textContent = Sfx.toggleMute() ? '🔇' : '🔊'; };
     $('btn-wipe').onclick = () => {
-      if (!confirm('Reset all stars and scores?')) return;
-      progress = { stars: {}, best: {}, faction: progress.faction };
+      if (!confirm('Reset stars, scores, credits and every mount?')) return;
+      progress = { stars: {}, best: {}, faction: progress.faction, credits: 0, owned: [STARTING_WEAPON] };
       saveProgress();
+      game.setLoadout(progress.owned);
       renderGrid();
     };
 
     renderGrid();
-    return { hud, showResult, showLevels, start, hide, isOverlayOpen: () =>
-      ['result', 'levels', 'title'].some((k) => !$(k).classList.contains('hidden')) };
+    return {
+      hud, showResult, showLevels, showArmory, start, hide,
+      ownedWeapons: () => progress.owned,
+      isOverlayOpen: () =>
+        ['result', 'levels', 'title', 'armory'].some((k) => !$(k).classList.contains('hidden')),
+    };
   }
 
   return { bind };
