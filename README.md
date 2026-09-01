@@ -9,11 +9,13 @@ The terrain is a combatant, not scenery. Every shell removes real ground, so
 the ridge between you and them is a problem you can solve two ways: arc over
 it, or spend shots boring a tunnel straight through and fire down the corridor.
 
-**Play:** drag back from your platform to aim, release to fire. **Space**
-triggers the loaded mount's trick mid-flight. Arrow keys make fine gunnery
-adjustments (**←→** elevation, **↑↓** charge, hold **Shift** for coarse),
-**Enter** fires, **1–6** select a mount, **R** restarts, **Esc** opens the
-campaign map, **M** mutes.
+**Play:** drag back from your platform to aim, release to fire. The preview
+shows the shot's real arc up to its **apex** — enough to judge shape and reach,
+not enough to tell you where it lands. **A/D** drive the platform (costs fuel),
+**Space** triggers the loaded mount's trick mid-flight. Arrow keys make fine
+gunnery adjustments (**←→** elevation, **↑↓** charge, hold **Shift** for
+coarse), **Enter** fires, **1–9** select a mount, **R** restarts, **Esc** opens
+the campaign map, **M** mutes.
 
 - **Live (prod):** not yet published
 - **Dev:** http://localhost:4791
@@ -33,14 +35,27 @@ campaign map, **M** mutes.
   yours for every battle after. You are not rationed shots; buying a mount buys
   options, not ammunition.
 
-  | Mount | Cost | Trick on Space |
+  | Mount | Cost | Behaviour |
   |---|---|---|
-  | Laser Cannon | free | — flat, fast, accurate |
-  | Scatter Pod | 10,000 | bursts into three |
-  | Fusion Charge | 22,000 | detonates early; the big digger |
-  | Rail Spike | 38,000 | punches forward — **bores through rock** |
-  | Seeker Drone | 58,000 | locks onto the enemy platform |
-  | Singularity | 80,000 | collapses a well; removes a lot of landscape |
+  | Laser Cannon | free | standard arc — flat, fast, honest |
+  | Scatter Pod | 10,000 | **Space** bursts it into three; light, so wind pushes it |
+  | Fusion Charge | 22,000 | heavy and drops fast; **Space** detonates early. Huge crater |
+  | Volley Battery | 30,000 | **3 shells per launch**, fanned |
+  | Rail Spike | 38,000 | flat, wind-proof, **bores through rock**; **Space** punches forward |
+  | Ion Lance | 46,000 | **dead straight — no arc at all**, immune to wind, dissipates at range |
+  | Seeker Drone | 58,000 | **Space** locks it onto the enemy platform |
+  | Barrage Mortar | 66,000 | **4 shells** that walk out across the ground |
+  | Singularity | 80,000 | collapses a well; removes a great deal of landscape |
+
+  Mounts differ in how they *fly*, not just in their numbers. Each has its own
+  gravity and wind response, so a Rail Spike shoots flat through a gale while a
+  Fusion Charge lobs and drops. The Ion Lance cannot arc over anything at
+  all — which is exactly why it pairs with tunnelling: bore a corridor through
+  the ridge with the Rail Spike, then fire the lance straight down it.
+
+- **Fuel.** You get an allowance each turn (spent per pixel, refilled at the
+  start of every turn), so **A/D** reposition the platform onto better ground.
+  Drive off a ledge and you fall — and take the landing damage.
 
 - **Wind**, re-rolled each round and shown in the firing readout, plus a hull
   bar over each platform. Undermine the ground beneath a platform and it falls
@@ -97,9 +112,16 @@ Things that are the way they are on purpose:
 - **Bitmask, not heightmap.** A heightmap is smaller and faster but can only
   describe a surface. It cannot represent a hole bored through a mountain,
   which is the whole point of the battlefield.
-- **No trajectory preview.** The aim indicator is deliberately short. Ranging
-  the enemy in over a couple of shots is the game; drawing the full arc would
-  hand over the answer and leave nothing to play.
+- **The preview stops at the apex.** It draws the *real* predicted arc — same
+  integrator, same wind, same per-mount drag — but cuts it at the crest. You
+  get honest feedback on the shape and reach of a shot without being handed the
+  impact point, so ranging the enemy in is still yours to do. If the arc meets
+  ground before it crests it stops there and says so, which answers the "over
+  the ridge or through it?" question directly. Direct-fire mounts have no apex
+  to stop at and line of sight is their whole character, so they draw their
+  full beam out to where it dissipates.
+- **Additive mounts show their whole fan.** A salvo weapon previews one arc per
+  shell it will actually launch, so you can see the spread before committing.
 - **One integrator.** Live flight, the aim indicator and the enemy gunner's
   search all run through the same `_advance`, so what the AI predicts is
   exactly what happens.
@@ -115,6 +137,14 @@ Things that are the way they are on purpose:
   Growing only the enemy's made the late campaign arithmetic-impossible.
 - **Fixed 60 Hz accumulator**, so the game plays at the same speed on a 120 Hz
   display.
+- **The canvas freezes while an overlay is open.** Overlays sit on a
+  `backdrop-filter` blur; re-blurring a canvas that is still animating
+  underneath makes the panel shimmer and flash every frame. Once an overlay is
+  up the game paints one last frame and then holds still, giving the blur a
+  static backdrop. A resize still forces a repaint.
+- **The HUD only rebuilds when it changes.** It is emitted on every drag frame,
+  and tearing down the weapon buttons 60 times a second restarted their CSS
+  transitions and made them flicker.
 
 ## Tinkering
 

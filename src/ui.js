@@ -56,17 +56,23 @@ const UI = (() => {
     $('hud-score').textContent = fmt(s.score);
     $('hud-credits').textContent = fmt(progress.credits);
 
-    // mounted weapons, selectable
+    // Mounted weapons. The HUD is emitted on every drag frame, so only rebuild
+    // this when it actually changed — tearing down and recreating the buttons
+    // 60 times a second restarts their CSS transitions and makes them flicker.
     const rack = $('weapon-rack');
     const yours = weaponList().filter((w) => s.owned.includes(w));
-    rack.innerHTML = yours.map((w, i) => {
-      const cls = w === s.weapon ? 'ammo current' : 'ammo';
-      return `<button class="${cls}" data-weapon="${w}" title="${WEAPONS[w].name} (${i + 1})">${WEAPONS[w].icon}</button>`;
-    }).join('') +
-      `<span class="ammo-name">${s.canAbility ? 'Space!' : WEAPONS[s.weapon].name}</span>`;
-    rack.querySelectorAll('[data-weapon]').forEach((b) => {
-      b.onclick = () => game.selectWeapon(b.dataset.weapon);
-    });
+    const sig = yours.join(',') + '|' + s.weapon + '|' + (s.canAbility ? 1 : 0);
+    if (sig !== hud._sig) {
+      hud._sig = sig;
+      rack.innerHTML = yours.map((w, i) => {
+        const cls = w === s.weapon ? 'ammo current' : 'ammo';
+        return `<button class="${cls}" data-weapon="${w}" title="${WEAPONS[w].name} (${i + 1})">${WEAPONS[w].icon}</button>`;
+      }).join('') +
+        `<span class="ammo-name">${s.canAbility ? 'Space!' : WEAPONS[s.weapon].name}</span>`;
+      rack.querySelectorAll('[data-weapon]').forEach((b) => {
+        b.onclick = () => game.selectWeapon(b.dataset.weapon);
+      });
+    }
 
     $('ro-angle').textContent = `${Math.round(s.angle)}°`;
     $('ro-power').textContent = `${Math.round(s.power * 100)}%`;
@@ -76,6 +82,12 @@ const UI = (() => {
     $('ro-wind').textContent = strength < 0.008
       ? 'calm'
       : `${w > 0 ? '▶' : '◀'} ${(strength * 100).toFixed(0)}`;
+
+    const fuelPct = Math.max(0, Math.min(1, s.fuel / s.maxFuel));
+    $('ro-fuel').textContent = Math.round(s.fuel);
+    $('ro-fuel-fill').style.width = (fuelPct * 100).toFixed(0) + '%';
+    $('ro-fuel-fill').style.background =
+      fuelPct > 0.5 ? '#9fd93a' : fuelPct > 0.2 ? '#f0b73c' : '#e2634a';
 
     $('ro-turn').textContent =
       s.state === 'over' ? '—'
@@ -101,8 +113,8 @@ const UI = (() => {
         `<div class="shop-body">` +
           `<span class="shop-name">${w.name}</span>` +
           `<span class="shop-blurb">${w.blurb}</span>` +
-          `<span class="shop-stats">${w.damage} dmg · ${w.blast} blast · ${w.dig} dig` +
-            `${w.penetrate ? ' · bores rock' : ''}</span>` +
+          `<span class="shop-stats"><em>${w.behaviour}</em> · ${w.damage} dmg` +
+            `${w.salvo ? ` ×${w.salvo.count}` : ''} · ${w.blast} blast · ${w.dig} dig</span>` +
         `</div>`;
       const btn = document.createElement('button');
       btn.className = 'btn tiny ' + (owned ? 'ghost' : affordable ? 'primary' : 'ghost');

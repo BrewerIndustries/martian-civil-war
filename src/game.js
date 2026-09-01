@@ -32,6 +32,8 @@ class Game {
     this.weapon = STARTING_WEAPON;
     this.aimAngle = 42;        // degrees above horizontal
     this.aimPower = 0.7;       // 0..1
+    this.fuel = PLATFORM.fuel;
+    this.driveDir = 0;
     this.dragging = false;
     this.abilityUsed = false;
     this.lastCreak = 0;
@@ -70,6 +72,7 @@ class Game {
     this.canvas.height = Math.round(h * dpr);
     this.dpr = dpr;
     this.viewW = w; this.viewH = h;
+    this._frozen = false;            // a resize always needs one more paint
     this.scale = Math.min(w / WORLD.w, h / WORLD.h);
     this.offX = (w - WORLD.w * this.scale) / 2;
     this.offY = (h - WORLD.h * this.scale) / 2;
@@ -106,6 +109,8 @@ class Game {
     this.lastShooter = null;
     this.aimAngle = 42;
     this.aimPower = 0.7;
+    this.fuel = PLATFORM.fuel;
+    this.driveDir = 0;
     this.state = 'aim';
     this.paused = false;
     this._rollWind();
@@ -171,6 +176,41 @@ class Game {
     this._emitHud();
   }
 
+  setDrive(dir) { this.driveDir = dir; }
+
+  /* Drive the platform along the surface. Fuel is spent per pixel travelled
+     and refills at the start of each of your turns, so repositioning is a
+     per-turn decision rather than a resource you can hoard. The tracks can
+     climb a step but not a wall, and driving off a ledge is allowed — the
+     platform simply falls, and takes the landing damage like any other drop. */
+  _drive() {
+    const pl = this.player;
+    if (!pl || pl.hp <= 0 || this.fuel <= 0 || !this.driveDir) return;
+    const step = Math.min(PLATFORM.speed, this.fuel);
+    const nx = clamp(pl.x + this.driveDir * step, 46, WORLD.w - 46);
+    if (nx === pl.x) return;
+
+    // a wall at head height is not climbable
+    const ceiling = pl.y - PLATFORM.climb;
+    if (this.terrain.solidAt(nx, ceiling)) return;
+
+    const ny = this.terrain.topAt(nx, Math.max(0, ceiling));
+    const moved = Math.abs(nx - pl.x);
+    pl.x = nx;
+    pl.y = ny;                       // falls are settled after the shot resolves
+    this.fuel = Math.max(0, this.fuel - moved);
+
+    if (Math.random() < 0.4) {
+      this.particles.push({
+        type: 'spark', x: pl.x - this.driveDir * 26, y: pl.y - 2,
+        vx: -this.driveDir * (0.6 + Math.random()), vy: -Math.random() * 0.8,
+        size: 2 + Math.random() * 3, color: '#a8623c',
+        life: 0.35, maxLife: 0.35, grav: 0.05, drag: 0.94,
+      });
+    }
+    this._emitHud();
+  }
+
   nudge(dAngle, dPower) {
     if (this.state !== 'aim') return;
     this.aimAngle = clamp(this.aimAngle + dAngle, -10, 89);
@@ -192,17 +232,27 @@ class Game {
   fire(owner = this.player, angle = this.aimAngle, power = this.aimPower, weaponId = this.weapon) {
     if (this.state !== 'aim' && owner === this.player) return;
     const w = WEAPONS[weaponId];
-    const a = angle * Math.PI / 180;
-    const speed = power * MAX_SPEED * w.speed;
     const o = this.muzzle(owner, angle);
 
-    this.shells.push({
-      x: o.x, y: o.y,
-      vx: Math.cos(a) * speed * owner.facing,
-      vy: -Math.sin(a) * speed,
-      weapon: weaponId, owner,
-      bore: w.penetrate || 0, trail: [], life: 0,
-    });
+    // An additive mount puts several shells up on one trigger pull: `spread`
+    // fans them by angle, `stagger` varies their charge so they walk out to
+    // different ranges rather than landing on top of one another.
+    const salvo = w.salvo;
+    const count = salvo ? salvo.count : 1;
+    for (let k = 0; k < count; k++) {
+      const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;   // -1 .. 1
+      const ang = (angle + t * (salvo ? salvo.spread : 0)) * Math.PI / 180;
+      const pw = clamp(power + t * (salvo ? salvo.stagger : 0), 0.05, 1);
+      const speed = pw * MAX_SPEED * w.speed;
+      this.shells.push({
+        x: o.x, y: o.y,
+        vx: Math.cos(ang) * speed * owner.facing,
+        vy: -Math.sin(ang) * speed,
+        weapon: weaponId, owner,
+        bore: w.penetrate || 0, trail: [], life: 0, travelled: 0,
+        shard: count > 1,
+      });
+    }
 
     owner.recoil = 1;
     this.lastShooter = owner;
@@ -216,11 +266,17 @@ class Game {
 
   useAbility() {
     if (this.state !== 'flight' || this.abilityUsed) return;
-    const s = this.shells.find((sh) => sh.owner === this.player);
-    if (!s) return;
-    const w = WEAPONS[s.weapon];
+    const mine = this.shells.filter((sh) => sh.owner === this.player);
+    if (!mine.length) return;
+    const w = WEAPONS[mine[0].weapon];
     if (!w.ability) return;
     this.abilityUsed = true;
+    // a salvo triggers as one — every shell in the air answers the button
+    for (const s of mine) this._triggerAbility(s, w);
+    this._emitHud();
+  }
+
+  _triggerAbility(s, w) {
 
     if (w.ability === 'detonate' || w.ability === 'implode') {
       this._impact(s, s.x, s.y);
@@ -251,7 +307,6 @@ class Game {
       this._puff(s.x, s.y, 14, '#8fd0ff');
       Sfx.click();
     }
-    this._emitHud();
   }
 
   /* ---------- ballistics ----------
@@ -260,9 +315,11 @@ class Game {
 
   _advance(s, mutate) {
     const w = WEAPONS[s.weapon];
-    s.vy += G;
-    s.vx += this.wind * WIND_ACCEL;
-    const d = 1 - (w.drag || 0.0008);
+    // gravityScale 0 means a dead-straight beam; windScale 0 means the gale
+    // has no purchase on it. This is what separates an Ion Lance from a shell.
+    s.vy += G * (w.gravityScale ?? 1);
+    s.vx += this.wind * WIND_ACCEL * (w.windScale ?? 1);
+    const d = 1 - (w.drag || 0);
     s.vx *= d; s.vy *= d;
     if (s.homing) {
       const t = s.owner === this.player ? this.foe : this.player;
@@ -276,6 +333,9 @@ class Game {
     const n = Math.max(1, Math.ceil(dist / 2));
     for (let i = 0; i < n; i++) {
       s.x += s.vx / n; s.y += s.vy / n;
+      s.travelled = (s.travelled || 0) + dist / n;
+      // an energy weapon dissipates rather than flying forever
+      if (w.range && s.travelled > w.range) return { type: 'spent' };
       if (s.x < -300 || s.x > WORLD.w + 300 || s.y > WORLD.h + 400) return { type: 'out' };
 
       for (const pl of [this.player, this.foe]) {
@@ -321,6 +381,62 @@ class Game {
       if (hit) return { hit, x: ghost.x, y: ghost.y, steps: i, path };
     }
     return { hit: { type: 'timeout' }, x: ghost.x, y: ghost.y, steps: maxSteps, path };
+  }
+
+  /* The aim preview: the real predicted arc, but cut at the APEX.
+
+     It runs through the same `_advance` as live shells and the enemy gunner,
+     so the curve drawn is exactly the curve the shell will fly — including
+     wind and this mount's drag. Stopping at the top of the arc is the point:
+     you get honest feedback on the shape and reach of a shot without being
+     handed the impact point, so ranging the enemy in is still yours to do.
+
+     If the arc meets ground before the apex, it stops there instead and says
+     so — that is the "over the ridge or through it?" question, answered. */
+  aimPreview(angleOverride, powerOverride) {
+    const pl = this.player;
+    if (!pl || pl.hp <= 0) return null;
+    const w = WEAPONS[this.weapon];
+    const angle = angleOverride === undefined ? this.aimAngle : angleOverride;
+    const power = clamp(powerOverride === undefined ? this.aimPower : powerOverride, 0.02, 1);
+    const a = angle * Math.PI / 180;
+    const speed = power * MAX_SPEED * w.speed;
+    const o = this.muzzle(pl, this.aimAngle);
+
+    const ghost = {
+      x: o.x, y: o.y,
+      vx: Math.cos(a) * speed * pl.facing, vy: -Math.sin(a) * speed,
+      weapon: this.weapon, owner: pl, bore: w.penetrate || 0, life: 0, travelled: 0,
+    };
+
+    /* A direct-fire beam has no apex to stop at, and hiding its path would be
+       pointless — line of sight IS its whole character, so draw the lot out to
+       where it dissipates. An arcing shell stops at the crest, which gives
+       honest feedback on shape and reach without handing over the impact
+       point. A flat or depressed arcing shot has no useful crest either, so it
+       gets a short lead-out instead of its whole descending flight. */
+    const noArc = (w.gravityScale ?? 1) === 0;
+    const cap = noArc ? 220 : (ghost.vy < 0 ? 130 : 26);
+
+    const pts = [{ x: ghost.x, y: ghost.y }];
+    let reason = 'cap';
+    for (let i = 0; i < cap; i++) {
+      const rising = ghost.vy < 0;
+      const hit = this._advance(ghost, false);
+      pts.push({ x: ghost.x, y: ghost.y });
+      if (hit) {
+        reason = hit.type === 'spent' ? 'spent' : hit.type === 'out' ? 'cap' : 'blocked';
+        break;
+      }
+      if (!noArc && rising && ghost.vy >= 0) { reason = 'apex'; break; }
+    }
+
+    const tip = pts[pts.length - 1];
+    return {
+      points: pts, tip, reason,
+      blocked: reason === 'blocked',
+      groundY: this.terrain.topAt(tip.x, tip.y),
+    };
   }
 
   /* ---------- impact ---------- */
@@ -468,6 +584,8 @@ class Game {
   /* ---------- turn machine ---------- */
 
   step(now = performance.now()) {
+    if (this.state === 'aim') this._drive();
+
     if (this.state === 'flight') {
       for (const s of this.shells.slice()) {
         s.trail.push({ x: s.x, y: s.y });
@@ -475,7 +593,11 @@ class Game {
         const hit = this._advance(s, true);
         if (hit) {
           this.shells = this.shells.filter((x) => x !== s);
-          if (hit.type !== 'out') this._impact(s, s.x, s.y, hit.platform || null);
+          if (hit.type === 'spent') {
+            this._puff(s.x, s.y, 10, WEAPONS[s.weapon].tracer, 0.7);
+          } else if (hit.type !== 'out') {
+            this._impact(s, s.x, s.y, hit.platform || null);
+          }
         }
       }
       if (!this.shells.length) {
@@ -495,6 +617,7 @@ class Game {
       } else {
         this.turns++;
         this._rollWind();
+        this.fuel = PLATFORM.fuel;
         this.state = 'aim';
       }
       this._emitHud();
@@ -541,6 +664,8 @@ class Game {
       name: this.battle ? this.battle.name : '',
       score: this.score,
       state: this.state,
+      fuel: this.fuel,
+      maxFuel: PLATFORM.fuel,
       owned: this.owned,
       weapon: this.weapon,
       angle: this.aimAngle,
@@ -618,6 +743,19 @@ class Game {
       while (this.acc >= STEP && steps < 5) { this.step(now); this.acc -= STEP; steps++; }
       if (this.acc > STEP * 5) this.acc = 0;
     }
+
+    /* Overlays sit on a backdrop-filter blur. Re-blurring a canvas that is
+       still animating underneath makes the panel shimmer and flash on every
+       frame, which is what you see between battles and while a menu is open.
+       Once an overlay is up we paint one last frame and then hold perfectly
+       still, so the blur has a static backdrop to work against. */
+    if (this.paused) {
+      if (this._frozen) return;
+      this._frozen = true;
+    } else {
+      this._frozen = false;
+    }
+
     this._stepEffects(dt);
     this._draw();
   }

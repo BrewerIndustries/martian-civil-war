@@ -32,40 +32,79 @@ const otherFaction = (id) => (id === 'red' ? 'green' : 'red');
    roster. `dig` is how much ground a hit removes, `blast` how far its damage
    reaches, `damage` what a dead-centre hit does to a platform's 100 hull. */
 const WEAPONS = {
+  /* Every mount flies differently, not just for different numbers:
+       gravityScale  0 = dead straight, 1 = a normal ballistic arc
+       windScale     how much the gale pushes it around
+       range         px of flight before it fizzles (0 = until it hits something)
+       salvo         several shells per trigger pull; `spread` fans them by
+                     angle, `stagger` varies their charge so they walk out
+       penetrate     px of solid rock it will bore through instead of stopping
+       ability       what Space does to it mid-flight */
   laser: {
     icon: '⚡', name: 'Laser Cannon', cost: 0, order: 0,
     r: 7, speed: 1.14, damage: 30, blast: 46, dig: 36, drag: 0.0006,
-    ability: null, tracer: '#7fe8ff',
+    gravityScale: 1, windScale: 1, ability: null, tracer: '#7fe8ff',
+    behaviour: 'Standard arc',
     blurb: 'Standard mount. Flat, fast and honest. Digs a modest hole.',
   },
   scatter: {
     icon: '✳', name: 'Scatter Pod', cost: 10000, order: 1,
     r: 8, speed: 1.02, damage: 15, blast: 38, dig: 28, drag: 0.0009,
-    ability: 'split', tracer: '#d8a8f0',
-    blurb: 'Space bursts it into three. Covers ground when your aim is loose.',
+    gravityScale: 1, windScale: 1.3, ability: 'split', tracer: '#d8a8f0',
+    behaviour: 'Splits in the air',
+    blurb: 'Space bursts it into three. Light, so the wind has opinions about it.',
   },
   fusion: {
     icon: '✸', name: 'Fusion Charge', cost: 22000, order: 2,
     r: 10, speed: 0.96, damage: 46, blast: 98, dig: 86, drag: 0.0011,
-    ability: 'detonate', tracer: '#9fd93a',
+    gravityScale: 1.15, windScale: 0.7, ability: 'detonate', tracer: '#9fd93a',
+    behaviour: 'Heavy, drops fast',
     blurb: 'Space detonates it early. Enormous crater — the tunneller’s pick.',
   },
+  volley: {
+    icon: '≡', name: 'Volley Battery', cost: 30000, order: 3,
+    r: 6, speed: 1.10, damage: 18, blast: 38, dig: 26, drag: 0.0006,
+    gravityScale: 1, windScale: 1, ability: null, tracer: '#7fe8ff',
+    salvo: { count: 3, spread: 3.6, stagger: 0 },
+    behaviour: '3 shells, fanned',
+    blurb: 'Three bolts per launch in a tight fan. Forgiving when your line is good but your range is not.',
+  },
   rail: {
-    icon: '⌁', name: 'Rail Spike', cost: 38000, order: 3,
+    icon: '⌁', name: 'Rail Spike', cost: 38000, order: 4,
     r: 5, speed: 1.12, damage: 58, blast: 34, dig: 20, drag: 0.0003,
-    ability: 'dive', penetrate: 340, tracer: '#ffd166',
-    blurb: 'Bores clean through rock instead of stopping at it. Space to punch forward.',
+    gravityScale: 0.72, windScale: 0.3, ability: 'dive', penetrate: 340,
+    tracer: '#ffd166',
+    behaviour: 'Bores through rock',
+    blurb: 'Flat, heavy and unbothered by wind. Bores clean through rock instead of stopping at it.',
+  },
+  ion: {
+    icon: '⌖', name: 'Ion Lance', cost: 46000, order: 5,
+    r: 5, speed: 1.85, damage: 44, blast: 30, dig: 24, drag: 0,
+    gravityScale: 0, windScale: 0, range: 1000, ability: null,
+    tracer: '#a8f0ff',
+    behaviour: 'Dead straight, no arc',
+    blurb: 'Ignores gravity and wind entirely — but it cannot arc over anything, and the beam dissipates at range. Deadly down a tunnel you have already bored.',
   },
   seeker: {
-    icon: '◈', name: 'Seeker Drone', cost: 58000, order: 4,
+    icon: '◈', name: 'Seeker Drone', cost: 58000, order: 6,
     r: 8, speed: 1.00, damage: 40, blast: 60, dig: 48, drag: 0.0008,
-    ability: 'seek', tracer: '#8fd0ff',
+    gravityScale: 0.9, windScale: 0.8, ability: 'seek', tracer: '#8fd0ff',
+    behaviour: 'Homes on command',
     blurb: 'Space locks it onto the enemy platform. It will find its own way in.',
   },
+  barrage: {
+    icon: '∴', name: 'Barrage Mortar', cost: 66000, order: 7,
+    r: 8, speed: 0.98, damage: 22, blast: 54, dig: 46, drag: 0.0010,
+    gravityScale: 1.1, windScale: 0.9, ability: 'detonate', tracer: '#ffb04a',
+    salvo: { count: 4, spread: 0.8, stagger: 0.055 },
+    behaviour: '4 shells, walking',
+    blurb: 'Four shells that walk out across the ground. Finds range and digs a trench doing it.',
+  },
   singularity: {
-    icon: '◍', name: 'Singularity', cost: 80000, order: 5,
+    icon: '◍', name: 'Singularity', cost: 80000, order: 8,
     r: 9, speed: 0.95, damage: 34, blast: 155, dig: 145, drag: 0.0012,
-    ability: 'implode', tracer: '#c9a0ff',
+    gravityScale: 1, windScale: 1, ability: 'implode', tracer: '#c9a0ff',
+    behaviour: 'Collapses a well',
     blurb: 'Collapses a well. Removes a great deal of landscape at once.',
   },
 };
@@ -73,7 +112,12 @@ const WEAPONS = {
 const STARTING_WEAPON = 'laser';
 const weaponList = () => Object.keys(WEAPONS).sort((a, b) => WEAPONS[a].order - WEAPONS[b].order);
 
-const PLATFORM = { hp: 100, w: 74, h: 34 };
+const PLATFORM = {
+  hp: 100, w: 74, h: 34,
+  fuel: 80,        // drive allowance, refilled at the start of each of your turns
+  climb: 13,       // tallest step the tracks can take, in px
+  speed: 1.5,      // px per physics step
+};
 
 /* ---------- the campaign ----------
    `skill` is how well the enemy gunner ranges you: it picks from the best

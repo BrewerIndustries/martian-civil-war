@@ -11,8 +11,29 @@
 
   ui = UI.bind(game);
 
+  // Held drive keys. Movement is applied on the physics step, not per keydown,
+  // so it runs at a steady rate rather than at the OS key-repeat rate.
+  const drive = { left: false, right: false };
+  const applyDrive = () => game.setDrive((drive.right ? 1 : 0) - (drive.left ? 1 : 0));
+
+  window.addEventListener('keyup', (e) => {
+    const k = e.key.toLowerCase();
+    if (k === 'a') { drive.left = false; applyDrive(); }
+    if (k === 'd') { drive.right = false; applyDrive(); }
+  });
+  window.addEventListener('blur', () => { drive.left = drive.right = false; applyDrive(); });
+
   window.addEventListener('keydown', (e) => {
     const open = ui.isOverlayOpen();
+
+    const k = e.key.toLowerCase();
+    if (!open && (k === 'a' || k === 'd')) {
+      e.preventDefault();
+      if (k === 'a') drive.left = true; else drive.right = true;
+      applyDrive();
+      return;
+    }
+    if (open && (drive.left || drive.right)) { drive.left = drive.right = false; applyDrive(); }
 
     if (e.code === 'Space') {                 // mount's trick, mid-flight
       e.preventDefault();
@@ -34,7 +55,7 @@
 
     if (e.repeat) return;
 
-    if (!open && e.key >= '1' && e.key <= '6') {
+    if (!open && e.key >= '1' && e.key <= '9') {
       const list = weaponList().filter((w) => ui.ownedWeapons().includes(w));
       const pick = list[Number(e.key) - 1];
       if (pick) game.selectWeapon(pick);

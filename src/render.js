@@ -274,36 +274,104 @@ const R = (() => {
   function aim(ctx, game) {
     const pl = game.player;
     if (!pl || pl.hp <= 0) return;
-    const o = game.muzzle(pl);
-    const a = game.aimAngle * Math.PI / 180;
-    const power = game.aimPower;
+    const w = WEAPONS[game.weapon];
+    const salvo = w.salvo;
+    const count = salvo ? salvo.count : 1;
+
+    // One arc per shell the trigger will actually launch, so an additive
+    // mount shows its whole fan before you commit to it.
+    const arcs = [];
+    for (let k = 0; k < count; k++) {
+      const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;
+      const p = game.aimPreview(
+        game.aimAngle + t * (salvo ? salvo.spread : 0),
+        game.aimPower + t * (salvo ? salvo.stagger : 0));
+      if (p && p.points.length > 1) arcs.push(p);
+    }
+    if (!arcs.length) return;
 
     ctx.save();
-    const len = 42 + power * 96;
-    const dx = Math.cos(a) * pl.facing, dy = -Math.sin(a);
+    ctx.lineCap = 'round';
 
-    ctx.setLineDash([6, 7]);
-    ctx.strokeStyle = 'rgba(255,224,160,.75)';
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.moveTo(o.x, o.y);
-    ctx.lineTo(o.x + dx * len, o.y + dy * len);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    arcs.forEach((prev, idx) => {
+      const pts = prev.points;
+      const lead = count === 1 || idx === 0 || idx === arcs.length - 1;
+      const hue = prev.blocked ? '#ff8a5c' : prev.reason === 'spent' ? '#a8f0ff' : '#ffe0a0';
 
-    // arrowhead
-    ctx.fillStyle = 'rgba(255,224,160,.9)';
-    ctx.save();
-    ctx.translate(o.x + dx * len, o.y + dy * len);
-    ctx.rotate(Math.atan2(dy, dx));
-    ctx.beginPath();
-    ctx.moveTo(9, 0); ctx.lineTo(-5, 5); ctx.lineTo(-5, -5); ctx.closePath(); ctx.fill();
-    ctx.restore();
+      for (let i = 1; i < pts.length; i++) {
+        const f = 1 - (i / pts.length) * 0.75;
+        ctx.globalAlpha = f * (count === 1 ? 0.75 : 0.5);
+        ctx.strokeStyle = hue;
+        ctx.lineWidth = (1 + f * 2.4) * (count === 1 ? 1 : 0.72);
+        ctx.beginPath();
+        ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+        ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+      }
+
+      if (count === 1) {
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = hue;
+        for (let i = 8; i < pts.length - 4; i += 8) {
+          ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, 1.9, 0, 6.283); ctx.fill();
+        }
+      }
+      if (!lead) return;
+
+      const tip = prev.tip;
+      if (prev.blocked) {
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = '#ff8a5c'; ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(tip.x - 7, tip.y - 7); ctx.lineTo(tip.x + 7, tip.y + 7);
+        ctx.moveTo(tip.x + 7, tip.y - 7); ctx.lineTo(tip.x - 7, tip.y + 7);
+        ctx.stroke();
+      } else if (prev.reason === 'spent') {
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = '#a8f0ff'; ctx.lineWidth = 2;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.arc(tip.x, tip.y, 8, 0, 6.283); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle = '#a8f0ff';
+        ctx.font = 'bold 10px "Trebuchet MS", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('RANGE', tip.x, tip.y - 15);
+      } else if (prev.reason === 'apex') {
+        ctx.globalAlpha = 0.3;
+        ctx.setLineDash([3, 6]);
+        ctx.strokeStyle = '#ffe0a0'; ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(tip.x, Math.min(prev.groundY, WORLD.h));
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.globalAlpha = 0.95;
+        ctx.strokeStyle = '#ffe0a0'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(tip.x, tip.y, 6, 0, 6.283); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(tip.x - 11, tip.y); ctx.lineTo(tip.x - 7, tip.y);
+        ctx.moveTo(tip.x + 7, tip.y); ctx.lineTo(tip.x + 11, tip.y);
+        ctx.moveTo(tip.x, tip.y - 11); ctx.lineTo(tip.x, tip.y - 7);
+        ctx.stroke();
+
+        if (count === 1) {
+          ctx.globalAlpha = 0.7;
+          ctx.fillStyle = '#ffe0a0';
+          ctx.font = 'bold 11px "Trebuchet MS", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('APEX', tip.x, tip.y - 17);
+        }
+      }
+    });
+    ctx.globalAlpha = 1;
 
     // power gauge under the hull
     const pw = 66, ph = 7, bx = pl.x - pw / 2, by = pl.y + 12;
     ctx.fillStyle = 'rgba(10,7,6,.72)';
     rr(ctx, bx, by, pw, ph, 3); ctx.fill();
+    const power = game.aimPower;
     ctx.fillStyle = power > 0.85 ? '#ff7a4a' : power > 0.55 ? '#f0b73c' : '#9fd93a';
     rr(ctx, bx + 1, by + 1, (pw - 2) * power, ph - 2, 2); ctx.fill();
     ctx.restore();
