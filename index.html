@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Martian Civil War</title>
+<meta name="description" content="Red Martians against Green. Pick a house, load the siege engine, and bring their redoubts down.">
+<meta name="theme-color" content="#1a0f0c">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔴</text></svg>">
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+
+<div id="app">
+  <canvas id="stage"></canvas>
+
+  <!-- Heads-up display -->
+  <header id="hud">
+    <div class="hud-left">
+      <button id="btn-menu" class="icon-btn" title="Level select (Esc)">☰</button>
+      <div class="level-tag">
+        <span id="hud-level">Assault 1</span>
+        <span id="hud-name">Border Outpost</span>
+      </div>
+    </div>
+
+    <div class="hud-mid">
+      <div id="ammo-rack" class="ammo-rack"></div>
+    </div>
+
+    <div class="hud-right">
+      <div class="score-box">
+        <span class="score-label">Score</span>
+        <span id="hud-score">0</span>
+      </div>
+      <button id="btn-mute" class="icon-btn" title="Mute (M)">🔊</button>
+      <button id="btn-retry" class="icon-btn" title="Restart level (R)">↻</button>
+    </div>
+  </header>
+
+  <div id="target-counter" class="target-counter"></div>
+
+  <!-- Contextual hint at the catapult -->
+  <div id="hint" class="hint">Drag back from the catapult to aim &amp; fire</div>
+
+  <!-- Level complete / failed -->
+  <div id="result" class="overlay hidden">
+    <div class="panel">
+      <h2 id="result-title">Redoubt Taken!</h2>
+      <div id="result-stars" class="stars"></div>
+      <div class="result-rows">
+        <div class="row"><span>Demolition</span><b id="rs-demo">0</b></div>
+        <div class="row"><span>Shots saved</span><b id="rs-shots">0</b></div>
+        <div class="row total"><span>Total</span><b id="rs-total">0</b></div>
+        <div class="row best"><span>Best</span><b id="rs-best">0</b></div>
+      </div>
+      <p id="result-msg" class="result-msg"></p>
+      <div class="panel-actions">
+        <button id="btn-replay" class="btn ghost">Retry</button>
+        <button id="btn-next" class="btn primary">Next Assault</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Level select -->
+  <div id="levels" class="overlay hidden">
+    <div class="panel wide">
+      <div class="panel-head">
+        <div>
+          <h2>Campaign</h2>
+          <p class="sub">Fighting for <b id="house-name">the Red Martians</b> · <span id="total-stars">0</span> ★ earned</p>
+        </div>
+        <button id="btn-close-levels" class="icon-btn">✕</button>
+      </div>
+      <div id="level-grid" class="level-grid"></div>
+      <div class="panel-foot">
+        <div class="foot-actions">
+          <button id="btn-switch" class="btn tiny ghost">Change side</button>
+          <button id="btn-wipe" class="btn tiny ghost">Reset progress</button>
+        </div>
+        <span class="legend"><b>Drag</b> to aim · <b>Space</b> for the shell's trick · <b>R</b> retry · <b>Esc</b> map</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Title screen: choose a house -->
+  <div id="title" class="overlay">
+    <div class="title-card">
+      <p class="eyebrow">Barsoom · the dry sea bottoms</p>
+      <h1>Martian<span>Civil War</span></h1>
+      <p class="tagline">Two houses, one dying world, and a great deal of masonry in the way.</p>
+
+      <div class="faction-picker">
+        <button class="faction-card red" data-faction="red">
+          <span class="crest">☉</span>
+          <span class="fname">Red Martians</span>
+          <span class="fblurb">Canal-builders of the dead seas. Disciplined, and out of patience.</span>
+          <span class="pick">Fight for the Red</span>
+        </button>
+        <button class="faction-card green" data-faction="green">
+          <span class="crest">⚔️</span>
+          <span class="fname">Green Martians</span>
+          <span class="fblurb">Horde of the dry sea bottoms. Six limbs, no forgiveness.</span>
+          <span class="pick">Fight for the Green</span>
+        </button>
+      </div>
+
+      <p class="credit">Pick a house · drag to aim · limited ordnance · you can switch sides later</p>
+    </div>
+  </div>
+
+<script src="vendor/matter.min.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/levels.js"></script>
+<script src="src/render.js"></script>
+<script src="src/game.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
