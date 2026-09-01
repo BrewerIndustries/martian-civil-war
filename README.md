@@ -43,6 +43,39 @@ python3 -m http.server 4791
 
 Then open http://localhost:4791.
 
+### Dev / test split
+
+Two local instances run side by side off separate git worktrees, so you can
+break things on `dev` while still having a stable build to play and compare
+against:
+
+| Instance | Branch | Directory | URL |
+|---|---|---|---|
+| dev | `dev` | `martian-civil-war/` | http://localhost:4791 |
+| test | `test` | `martian-civil-war-test/` | http://localhost:4792 |
+
+They are different origins, so each keeps its **own** saved progress in
+`localStorage` — clearing stars on one does not touch the other.
+
+Set the test worktree up once:
+
+```bash
+git branch test dev && git worktree add ../martian-civil-war-test test
+```
+
+Promote dev to test when a build is worth keeping:
+
+```bash
+git -C ../martian-civil-war-test merge --ff-only dev
+```
+
+Serve them (or use the `martian-civil-war-dev` / `-test` entries in
+`.claude/launch.json`):
+
+```bash
+python3 -m http.server 4792 --directory ../martian-civil-war-test
+```
+
 ## Layout
 
 | Path | What |
