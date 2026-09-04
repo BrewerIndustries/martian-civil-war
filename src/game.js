@@ -282,12 +282,21 @@ class Game {
       this._impact(s, s.x, s.y);
       this.shells = this.shells.filter((x) => x !== s);
     } else if (w.ability === 'split') {
+      // Fan the shards by rotating the velocity, not by nudging vy. Scaling
+      // the vector barely diverged them: all three landed inside ~100px and
+      // piled into what looked like a single crater, so splitting appeared to
+      // do nothing at all. A real angular fan spreads the craters out.
       this.shells = this.shells.filter((x) => x !== s);
+      const heading = Math.atan2(s.vy, s.vx);
+      const speed = Math.hypot(s.vx, s.vy);
+      const fan = (w.splitFan || 13) * Math.PI / 180;
       for (let i = -1; i <= 1; i++) {
+        const a = heading + i * fan;
         this.shells.push({
           x: s.x, y: s.y,
-          vx: s.vx * (1 + i * 0.06), vy: s.vy * (1 + i * 0.06) + i * 1.6,
-          weapon: s.weapon, owner: s.owner, bore: 0, trail: [], life: 0, shard: true,
+          vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+          weapon: s.weapon, owner: s.owner, bore: 0, trail: [], life: 0,
+          travelled: s.travelled || 0, shard: true,
         });
       }
       this._puff(s.x, s.y, 16, '#d8a8f0');
@@ -785,6 +794,7 @@ class Game {
       R.platform(ctx, this.player, this, true);
       if (this.state === 'aim') R.aim(ctx, this);
       for (const s of this.shells) R.shell(ctx, s);
+      if (this.state === 'flight') R.abilityPrompt(ctx, this, this.time);
     }
     R.particles(ctx, this.particles);
     R.popups(ctx, this.popups);

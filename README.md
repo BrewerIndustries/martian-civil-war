@@ -38,7 +38,7 @@ the campaign map, **M** mutes.
   | Mount | Cost | Behaviour |
   |---|---|---|
   | Laser Cannon | free | standard arc — flat, fast, honest |
-  | Scatter Pod | 10,000 | **Space** bursts it into three; light, so wind pushes it |
+  | Scatter Pod | 10,000 | **Space** fans it into three, cratering a stretch of ground; light, so wind pushes it |
   | Fusion Charge | 22,000 | heavy and drops fast; **Space** detonates early. Huge crater |
   | Volley Battery | 30,000 | **3 shells per launch**, fanned |
   | Rail Spike | 38,000 | flat, wind-proof, **bores through rock**; **Space** punches forward |
@@ -122,6 +122,9 @@ Things that are the way they are on purpose:
   full beam out to where it dissipates.
 - **Additive mounts show their whole fan.** A salvo weapon previews one arc per
   shell it will actually launch, so you can see the spread before committing.
+- **Mid-flight tricks prompt on the shell.** A mount's ability is worthless if
+  nobody learns it exists, and a small HUD label was too easy to miss, so the
+  prompt rides on the shell while the window to use it is open.
 - **One integrator.** Live flight, the aim indicator and the enemy gunner's
   search all run through the same `_advance`, so what the AI predicts is
   exactly what happens.

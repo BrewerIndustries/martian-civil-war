@@ -377,6 +377,38 @@ const R = (() => {
     ctx.restore();
   }
 
+  /* A mount's trick is worthless if the player never learns it exists. The
+     HUD label alone was too easy to miss, so prompt on the shell itself
+     while the window to use it is actually open. */
+  function abilityPrompt(ctx, game, t) {
+    const w = WEAPONS[game.weapon];
+    if (!w.ability || game.abilityUsed) return;
+    const mine = game.shells.filter((s) => s.owner === game.player);
+    if (!mine.length) return;
+    const s = mine[0];
+
+    const pulse = 0.5 + 0.5 * Math.sin(t * 7);
+    const label = { split: 'BURST', detonate: 'DETONATE', dive: 'PUNCH',
+                    seek: 'LOCK ON', implode: 'COLLAPSE' }[w.ability] || 'TRIGGER';
+    const x = s.x, y = s.y - 34;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px "Trebuchet MS", sans-serif';
+    const text = `SPACE · ${label}`;
+    const pad = 9;
+    const tw = ctx.measureText(text).width;
+
+    ctx.globalAlpha = 0.72 + pulse * 0.28;
+    ctx.fillStyle = 'rgba(12,8,6,.82)';
+    rr(ctx, x - tw / 2 - pad, y - 13, tw + pad * 2, 22, 11); ctx.fill();
+    ctx.strokeStyle = w.tracer; ctx.lineWidth = 1.5 + pulse;
+    rr(ctx, x - tw / 2 - pad, y - 13, tw + pad * 2, 22, 11); ctx.stroke();
+    ctx.fillStyle = w.tracer;
+    ctx.fillText(text, x, y + 3);
+    ctx.restore();
+  }
+
   /* ---------- effects ---------- */
 
   function particles(ctx, list) {
@@ -416,5 +448,5 @@ const R = (() => {
     ctx.restore();
   }
 
-  return { background, platform, shell, aim, particles, popups, rr };
+  return { background, platform, shell, aim, abilityPrompt, particles, popups, rr };
 })();
