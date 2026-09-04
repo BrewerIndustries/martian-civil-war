@@ -251,6 +251,13 @@ class Game {
         weapon: weaponId, owner,
         bore: w.penetrate || 0, trail: [], life: 0, travelled: 0,
         shard: count > 1,
+        // Bursting exactly at the crest leaves the shards no time to diverge —
+        // measured a 49px spread, which reads as a single crater. Fire it part
+        // way up the climb instead, where the fan still has flight left to open.
+        burstAt: w.autoAbility
+          ? Math.max(4, Math.round(0.6 * (Math.abs(Math.sin(ang) * speed) / (G * (w.gravityScale ?? 1)))))
+          : 0,
+        age: 0,
       });
     }
 
@@ -289,17 +296,29 @@ class Game {
       this.shells = this.shells.filter((x) => x !== s);
       const heading = Math.atan2(s.vy, s.vx);
       const speed = Math.hypot(s.vx, s.vy);
+
+      /* Spread is driven by SPEED, not angle. Range goes as v², so a speed
+         differential spreads the shards smoothly and proportionally at any
+         launch angle. Perturbing the angle as well made it wildly erratic —
+         measured anywhere from 28px to 621px across the angle range, because
+         the two effects interact nonlinearly and then meet uneven ground. The
+         small angular fan that remains is for show: it separates the shards
+         visibly in the air without driving where they land. */
       const fan = (w.splitFan || 13) * Math.PI / 180;
+      const spd = w.splitSpeed || 0.07;
       for (let i = -1; i <= 1; i++) {
         const a = heading + i * fan;
+        const v = speed * (1 - i * spd);   // note the sign: rotating a shard
+        // flatter already shortens its range, so the slower shard must be the
+        // flatter one or the two effects cancel and nothing spreads
         this.shells.push({
           x: s.x, y: s.y,
-          vx: Math.cos(a) * speed, vy: Math.sin(a) * speed,
+          vx: Math.cos(a) * v, vy: Math.sin(a) * v,
           weapon: s.weapon, owner: s.owner, bore: 0, trail: [], life: 0,
-          travelled: s.travelled || 0, shard: true,
+          travelled: s.travelled || 0, shard: true, burst: true,
         });
       }
-      this._puff(s.x, s.y, 16, '#d8a8f0');
+      this._burst(s.x, s.y, WEAPONS[s.weapon].tracer);
       Sfx.click();
     } else if (w.ability === 'dive') {
       const len = Math.hypot(s.vx, s.vy) || 1;
@@ -599,7 +618,24 @@ class Game {
       for (const s of this.shells.slice()) {
         s.trail.push({ x: s.x, y: s.y });
         if (s.trail.length > 40) s.trail.shift();
+
+        /* A mount whose whole identity is its mid-flight trick is
+           indistinguishable from a dud if the player never discovers Space.
+           So it fires itself at the crest of the arc if untriggered — Space
+           still bursts it early, which is how you actually aim the spread. */
+        const wpn = WEAPONS[s.weapon];
+        const owner = s.owner;
+        s.age = (s.age || 0) + 1;
+        const dueToBurst = wpn.autoAbility && !s.burst && !s.shard &&
+                           s.burstAt && s.age >= s.burstAt;
         const hit = this._advance(s, true);
+        if (dueToBurst && this.shells.includes(s)) {
+          s.burst = true;
+          if (owner === this.player) this.abilityUsed = true;
+          this._triggerAbility(s, wpn);
+          this._emitHud();
+          continue;
+        }
         if (hit) {
           this.shells = this.shells.filter((x) => x !== s);
           if (hit.type === 'spent') {
@@ -700,6 +736,21 @@ class Game {
         life: 0.9 + Math.random(), maxLife: 1.9, grav: 0.34, drag: 0.995, land: true,
       });
     }
+  }
+
+  // An expanding shock ring plus a shower of sparks, so a mid-air split reads
+  // as an event rather than a shell quietly becoming three shells.
+  _burst(x, y, color) {
+    this.particles.push({
+      type: 'ring', x, y, vx: 0, vy: 0, size: 8, grow: 4.4,
+      color, life: 0.45, maxLife: 0.45, grav: 0, drag: 1,
+    });
+    this.particles.push({
+      type: 'ring', x, y, vx: 0, vy: 0, size: 4, grow: 2.6,
+      color: '#ffffff', life: 0.3, maxLife: 0.3, grav: 0, drag: 1,
+    });
+    this._puff(x, y, 26, color, 1.5);
+    this.shake = Math.min(this.shake + 6, 34);
   }
 
   _puff(x, y, count, color, scale = 1) {

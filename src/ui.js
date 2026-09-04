@@ -233,9 +233,25 @@ const UI = (() => {
     start._t = setTimeout(() => hint.classList.add('gone'), 5200);
   }
 
+  /* Which build is this page actually running? serve.py stamps every script
+     URL with the file's mtime, so the newest stamp is the build. Worth showing:
+     a stale cached page is otherwise indistinguishable from a broken feature,
+     which is exactly how an hour gets lost. */
+  function buildStamp() {
+    const versions = [...document.querySelectorAll('script[src]')]
+      .map((el) => Number((el.getAttribute('src').match(/\?v=(\d+)/) || [])[1] || 0));
+    const newest = Math.max(0, ...versions);
+    if (!newest) return 'build: unstamped (served without cache-busting)';
+    const d = new Date(newest * 1000);
+    return 'build ' + d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+      ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+
   function bind(g) {
     game = g;
     loadProgress();
+    const stamp = buildStamp();
+    ['build-title', 'build-map'].forEach((id) => { if ($(id)) $(id).textContent = stamp; });
     applyFaction(progress.faction);
     game.setLoadout(progress.owned);
 

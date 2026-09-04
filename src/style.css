@@ -418,3 +418,13 @@ html, body {
   background: var(--good);
   transition: width .12s linear;
 }
+
+
+/* which build is loaded — a stale cached page otherwise looks like a bug */
+.build {
+  display: inline-block;
+  margin: 10px 0 0;
+  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+  color: #6f5a4c;
+}
+.panel-foot .build { margin: 0 10px 0 0; color: #6f5a4c; }

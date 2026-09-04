@@ -38,7 +38,7 @@ the campaign map, **M** mutes.
   | Mount | Cost | Behaviour |
   |---|---|---|
   | Laser Cannon | free | standard arc — flat, fast, honest |
-  | Scatter Pod | 10,000 | **Space** fans it into three, cratering a stretch of ground; light, so wind pushes it |
+  | Scatter Pod | 10,000 | bursts into three during the climb (**Space** to burst early); loft it for a wide pattern, flat for a tight one |
   | Fusion Charge | 22,000 | heavy and drops fast; **Space** detonates early. Huge crater |
   | Volley Battery | 30,000 | **3 shells per launch**, fanned |
   | Rail Spike | 38,000 | flat, wind-proof, **bores through rock**; **Space** punches forward |
@@ -132,7 +132,18 @@ Things that are the way they are on purpose:
   shell it will actually launch, so you can see the spread before committing.
 - **Mid-flight tricks prompt on the shell.** A mount's ability is worthless if
   nobody learns it exists, and a small HUD label was too easy to miss, so the
-  prompt rides on the shell while the window to use it is open.
+  prompt rides on the shell while the window to use it is open. A mount whose
+  entire identity is its trick (the Scatter Pod) also fires itself part way up
+  the climb if untriggered, so it can never look like a dud; Space bursts it
+  early, which is how you actually aim the spread.
+- **Scatter spread comes from speed, not angle.** Range goes as v², so a speed
+  differential separates the shards smoothly at any launch angle. Perturbing
+  the angle as well was wildly erratic — measured 28px to 621px across the
+  angle range — because the two effects interact nonlinearly and then meet
+  uneven ground. The residual angular fan is cosmetic: it separates the shards
+  visibly in the air without driving where they land.
+- **The build stamp is on the title screen and campaign map.** A stale cached
+  page is otherwise indistinguishable from a broken feature.
 - **One integrator.** Live flight, the aim indicator and the enemy gunner's
   search all run through the same `_advance`, so what the AI predicts is
   exactly what happens.

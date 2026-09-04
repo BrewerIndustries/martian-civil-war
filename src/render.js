@@ -415,7 +415,13 @@ const R = (() => {
     for (const p of list) {
       const f = p.life / p.maxLife;
       ctx.globalAlpha = Math.max(0, f) * (p.alpha ?? 1);
-      if (p.type === 'debris') {
+      if (p.type === 'ring') {
+        const grown = p.size + (1 - f) * p.size * (p.grow || 3);
+        ctx.globalAlpha = Math.max(0, f) * 0.9;
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = 1 + f * 3.5;
+        ctx.beginPath(); ctx.arc(p.x, p.y, grown, 0, 6.283); ctx.stroke();
+      } else if (p.type === 'debris') {
         ctx.save();
         ctx.translate(p.x, p.y); ctx.rotate(p.rot);
         ctx.fillStyle = p.color;

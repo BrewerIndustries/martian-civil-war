@@ -49,10 +49,10 @@ const WEAPONS = {
   },
   scatter: {
     icon: '✳', name: 'Scatter Pod', cost: 10000, order: 1,
-    r: 8, speed: 1.02, damage: 22, blast: 42, dig: 30, drag: 0.0009, splitFan: 8,
+    r: 8, speed: 1.02, damage: 22, blast: 42, dig: 30, drag: 0.0009, splitFan: 3, splitSpeed: 0.11, autoAbility: true,
     gravityScale: 1, windScale: 1.3, ability: 'split', tracer: '#d8a8f0',
     behaviour: 'Splits into 3 in the air',
-    blurb: 'Space fans it into three shells that crater a stretch of ground, not a single hole. Light, so the wind has opinions about it.',
+    blurb: 'Bursts into three shells that crater a stretch of ground. Goes off on its own during the climb; Space bursts it early. Loft it and the pattern widens — a flat shot groups tight.',
   },
   fusion: {
     icon: '✸', name: 'Fusion Charge', cost: 22000, order: 2,
