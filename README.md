@@ -66,10 +66,15 @@ the campaign map, **M** mutes.
 No build step and no dependencies — it's a static site.
 
 ```bash
-python3 -m http.server 4791
+python3 serve.py 4791
 ```
 
 Then open http://localhost:4791.
+
+Use `serve.py` rather than `python3 -m http.server`: the built-in server sends
+no cache directives, so browsers apply heuristic caching and keep serving a
+stale `.js` after you edit it, even through a normal reload. `serve.py` sends
+`no-store`, so a reload always gets what is on disk.
 
 ### Dev / test split
 
@@ -90,6 +95,8 @@ They are different origins, so each keeps its **own** saved progress in
 git branch test dev && git worktree add ../martian-civil-war-test test
 # promote a build worth keeping
 git -C ../martian-civil-war-test merge --ff-only dev
+# serve the test copy
+python3 ../martian-civil-war-test/serve.py 4792 ../martian-civil-war-test
 ```
 
 ## Layout
@@ -104,6 +111,7 @@ git -C ../martian-civil-war-test merge --ff-only dev
 | `src/ui.js` | HUD, armory, campaign map, saved progress |
 | `src/audio.js` | Synthesised sound (WebAudio, no audio files) |
 | `src/main.js` | Bootstrap and keyboard |
+| `serve.py` | No-cache static dev server |
 
 ## Design notes
 
