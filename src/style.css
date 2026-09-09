@@ -532,3 +532,46 @@ html, body {
   font-size: 11px; padding: 3px 9px; border-radius: 999px;
   background: #2b3a22; border: 1px solid #4c6b3a; color: #cfe6b4;
 }
+
+
+/* ---------- fire bar: laying each gun, then letting fly ---------- */
+
+.firebar {
+  position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 14px;
+  background: rgba(30, 18, 14, .82);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(7px);
+  box-shadow: 0 14px 36px rgba(0,0,0,.45);
+}
+.firebar.hidden { display: none; }
+.fb-mounts { display: flex; gap: 5px; }
+.fb-mount {
+  width: 34px; height: 34px; border-radius: 10px;
+  display: grid; place-items: center;
+  font-size: 16px; color: var(--ink);
+  background: #2b1b16; border: 2px solid #4a3129;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.fb-mount:hover { transform: translateY(-2px); }
+.fb-mount.active {
+  border-color: var(--tracer, var(--gold));
+  box-shadow: 0 0 0 2px rgba(255,255,255,.06) inset, 0 0 14px -2px var(--tracer, var(--gold));
+  transform: translateY(-2px);
+}
+.fb-step {
+  width: 28px; height: 34px; border-radius: 9px;
+  background: transparent; border: 1px solid var(--line);
+  color: var(--ink-dim); font-size: 16px; cursor: pointer;
+}
+.fb-step:hover { color: var(--ink); border-color: var(--gold-deep); }
+.fb-fire { padding: 9px 18px; font-size: 13px; letter-spacing: .08em; }
+.readout .mount b { color: var(--gold); font-size: 12px; }
+
+@media (max-width: 720px) {
+  .firebar { bottom: 12px; padding: 6px; gap: 5px; }
+  .fb-mount { width: 28px; height: 28px; font-size: 13px; }
+  .fb-fire { padding: 7px 12px; font-size: 11px; }
+}

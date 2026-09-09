@@ -36,8 +36,12 @@ class Game {
     this.modules = [];
     this.mods = this._rollUpModules();
     this.armed = [STARTING_WEAPON];
-    this.aimAngle = 42;        // degrees above horizontal
-    this.aimPower = 0.7;       // 0..1
+    /* Each armed mount carries its own firing solution. A turn is: arm the
+       volley, lay each gun in turn, then fire everything at once — so the
+       platform can dig with one mount and go for the hull with another in the
+       same breath. */
+    this.solutions = {};
+    this.aimIndex = 0;
     this.fuel = PLATFORM.fuel;
     this.driveDir = 0;
     this.dragging = false;
@@ -49,6 +53,65 @@ class Game {
     window.addEventListener('resize', () => this.resize());
     this._frame = this._frame.bind(this);
     requestAnimationFrame(this._frame);
+  }
+
+  _sol(id) {
+    if (!this.solutions[id]) this.solutions[id] = { angle: 42, power: 0.7 };
+    return this.solutions[id];
+  }
+  get currentMount() {
+    if (!this.armed || !this.armed.length) return this.owned ? this.owned[0] : STARTING_WEAPON;
+    return this.armed[Math.min(this.aimIndex, this.armed.length - 1)];
+  }
+  get aimAngle() { return this._sol(this.currentMount).angle; }
+  set aimAngle(v) { this._sol(this.currentMount).angle = v; }
+  get aimPower() { return this._sol(this.currentMount).power; }
+  set aimPower(v) { this._sol(this.currentMount).power = v; }
+
+  // Lay the next gun; past the last one, the whole volley goes.
+  nextMount() {
+    if (this.state !== 'aim') return;
+    if (this.aimIndex >= this.armed.length - 1) { this.fireAll(); return; }
+    this.aimIndex++;
+    Sfx.click();
+    this._emitHud();
+  }
+  cycleMount(dir) {
+    if (this.state !== 'aim' || !this.armed.length) return;
+    this.aimIndex = (this.aimIndex + dir + this.armed.length) % this.armed.length;
+    Sfx.click();
+    this._emitHud();
+  }
+  aimMount(id) {
+    const i = this.armed.indexOf(id);
+    if (i < 0 || this.state !== 'aim') return;
+    this.aimIndex = i;
+    this._emitHud();
+  }
+
+  // Called by the UI when the arming panel is dismissed.
+  beginAiming() {
+    if (this.state !== 'arming') return;
+    this.aimIndex = 0;
+    this.state = 'aim';
+    this._emitHud();
+  }
+
+  fireAll() {
+    if (this.state !== 'aim' || !this.armed.length) return;
+    for (const id of this.armed) {
+      const sol = this._sol(id);
+      this._launch(this.player, sol.angle, sol.power, id);
+    }
+    this.player.recoil = 1;
+    this.lastShooter = this.player;
+    this.abilityUsed = false;
+    this.state = 'flight';
+    this.shake = Math.min(this.shake + 4 + this.armed.length * 1.6, 22);
+    Sfx.launch();
+    const o = this.muzzle(this.player, this.aimAngle);
+    this._puff(o.x, o.y, 10 + this.armed.length * 3, '#e8c9a0');
+    this._emitHud();
   }
 
   setFaction(id) { if (FACTIONS[id]) this.faction = id; }
@@ -80,7 +143,8 @@ class Game {
   }
 
   toggleMount(id) {
-    if (this.state !== 'aim' || !this.owned.includes(id)) return;
+    // The panel runs in 'arming'; mounts can also be swapped while laying.
+    if ((this.state !== 'arming' && this.state !== 'aim') || !this.owned.includes(id)) return;
     if (this.armed.includes(id)) {
       this.armed = this.armed.filter((w) => w !== id);
       Sfx.click();
@@ -131,16 +195,21 @@ class Game {
 
   _rollUpModules() {
     const m = { hull: 0, damageReduce: 0, splashReduce: 0, regen: 0,
-                fuel: 0, climb: 0, driveSpeed: 0, fallReduce: 0, firepower: 0 };
+                fuel: 0, climb: 0, driveSpeed: 0, fallReduce: 0, firepower: 0,
+                windResist: 0, impactMarker: false, fullArc: false };
     for (const id of this.modules || []) {
       const mod = MODULES[id];
       if (!mod) continue;
-      for (const k of Object.keys(m)) if (mod[k]) m[k] += mod[k];
+      for (const k of Object.keys(m)) {
+        if (!mod[k]) continue;
+        if (typeof m[k] === 'boolean') m[k] = true; else m[k] += mod[k];
+      }
     }
     // fractions stack additively but must never reach total immunity
     m.damageReduce = Math.min(0.6, m.damageReduce);
     m.splashReduce = Math.min(0.75, m.splashReduce);
     m.fallReduce = Math.min(0.85, m.fallReduce);
+    m.windResist = Math.min(0.85, m.windResist);
     return m;
   }
 
@@ -197,7 +266,7 @@ class Game {
     this.aimPower = 0.7;
     this.fuel = this.maxFuel;
     this.driveDir = 0;
-    this.state = 'aim';
+    this.state = 'arming';
     this.paused = false;
     this._rollWind();
     this._emitHud();
@@ -322,8 +391,8 @@ class Game {
      scatters them across the target. That is the point of a rolling fortress:
      you do not snipe, you saturate. Early on, with one mount, it is a precise
      duel; a full arsenal turns it into a barrage. */
-  fire(owner = this.player, angle = this.aimAngle, power = this.aimPower, mounts = null) {
-    if (this.state !== 'aim' && owner === this.player) return;
+  fire(owner = this.foe, angle = 42, power = 0.7, mounts = null) {
+    if (owner === this.player) return this.fireAll();
     const roster = mounts || this.rosterFor(owner);
     if (!roster.length) return;
 
@@ -406,7 +475,9 @@ class Game {
   /* The enemy runs the same budget: it arms what it can afford from its roster,
      shuffled, so successive volleys are not identical. */
   _armFoe() {
-    const budget = this.battle.enemyFirepower || 40;
+    // an EMP hit last turn takes a bite out of what they can power
+    let budget = this.battle.enemyFirepower || 40;
+    if (this.foeEmp) { budget = Math.round(budget * (1 - this.foeEmp)); this.foeEmp = 0; }
     const pool = (this.foeMounts || ['laser']).slice().sort(() => Math.random() - 0.5);
     const picked = [];
     let load = 0;
@@ -484,7 +555,10 @@ class Game {
          visibly in the air without driving where they land. */
       const fan = (w.splitFan || 13) * Math.PI / 180;
       const spd = w.splitSpeed || 0.07;
-      for (let i = -1; i <= 1; i++) {
+      const n = w.splitCount || 3;
+      const half = (n - 1) / 2;
+      for (let k = 0; k < n; k++) {
+        const i = (k - half) / half;
         const a = heading + i * fan;
         const v = speed * (1 - i * spd);   // note the sign: rotating a shard
         // flatter already shortens its range, so the slower shard must be the
@@ -524,7 +598,8 @@ class Game {
     // gravityScale 0 means a dead-straight beam; windScale 0 means the gale
     // has no purchase on it. This is what separates an Ion Lance from a shell.
     s.vy += G * (w.gravityScale ?? 1);
-    s.vx += this.wind * WIND_ACCEL * (w.windScale ?? 1);
+    const steady = (s.owner === this.player) ? (1 - this.mods.windResist) : 1;
+    s.vx += this.wind * WIND_ACCEL * (w.windScale ?? 1) * steady;
     const d = 1 - (w.drag || 0);
     s.vx *= d; s.vy *= d;
     if (s.homing) {
@@ -599,7 +674,7 @@ class Game {
 
      If the arc meets ground before the apex, it stops there instead and says
      so — that is the "over the ridge or through it?" question, answered. */
-  aimPreview(angleOverride, powerOverride, weaponId) {
+  aimPreview(angleOverride, powerOverride, weaponId, fullArc) {
     const pl = this.player;
     if (!pl || pl.hp <= 0) return null;
     const w = WEAPONS[weaponId || this.owned[0]];
@@ -625,7 +700,8 @@ class Game {
        point. A flat or depressed arcing shot has no useful crest either, so it
        gets a short lead-out instead of its whole descending flight. */
     const noArc = (w.gravityScale ?? 1) === 0;
-    const cap = noArc ? 220 : (ghost.vy < 0 ? 130 : 26);
+    const showAll = fullArc || this.mods.fullArc;
+    const cap = noArc ? 220 : (showAll ? 400 : (ghost.vy < 0 ? 130 : 26));
 
     const pts = [{ x: ghost.x, y: ghost.y }];
     let reason = 'cap';
@@ -637,7 +713,7 @@ class Game {
         reason = hit.type === 'spent' ? 'spent' : hit.type === 'out' ? 'cap' : 'blocked';
         break;
       }
-      if (!noArc && rising && ghost.vy >= 0) { reason = 'apex'; break; }
+      if (!showAll && !noArc && rising && ghost.vy >= 0) { reason = 'apex'; break; }
     }
 
     const tip = pts[pts.length - 1];
@@ -696,6 +772,11 @@ class Game {
       }
       const dmg = Math.round(raw);
       if (dmg > 0) this._damage(pl, dmg, s.owner);
+      if (w.emp && pl === this.foe && s.owner === this.player) {
+        this.foeEmp = Math.max(this.foeEmp || 0, w.emp);
+        this.popups.push({ x: pl.x, y: pl.y - 140, text: 'POWER DOWN',
+                           color: '#7fe8ff', life: 1.3, maxLife: 1.3, vy: -0.8 });
+      }
     }
   }
 
@@ -903,6 +984,8 @@ class Game {
       mods: this.mods,
       owned: this.owned,
       armed: this.armed,
+      aimIndex: this.aimIndex,
+      currentMount: this.currentMount,
       firepower: this.firepower,
       armedLoad: this.armedLoad,
       foeMounts: this.foeMounts || [],

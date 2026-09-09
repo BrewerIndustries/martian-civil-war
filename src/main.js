@@ -40,7 +40,10 @@
       if (!open) game.useAbility();
       return;
     }
-    if (!open && e.key === 'Enter') { e.preventDefault(); game.fire(); return; }
+    if (!open && e.key === 'Enter') { e.preventDefault(); game.nextMount(); return; }
+    if (!open && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); game.fireAll(); return; }
+    if (!open && (e.key === '[' || e.key === 'q')) { e.preventDefault(); game.cycleMount(-1); return; }
+    if (!open && (e.key === ']' || e.key === 'e')) { e.preventDefault(); game.cycleMount(1); return; }
 
     // Fine gunnery. Hold Shift for coarse adjustment.
     if (!open && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {

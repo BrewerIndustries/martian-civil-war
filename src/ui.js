@@ -100,11 +100,32 @@ const UI = (() => {
     $('ro-fuel-fill').style.background =
       fuelPct > 0.5 ? '#9fd93a' : fuelPct > 0.2 ? '#f0b73c' : '#e2634a';
 
+    // which gun are we laying, and the fire bar that goes with it
+    const laying = s.state === 'aim' && s.armed && s.armed.length;
+    $('ro-mount').textContent = laying
+      ? `${s.aimIndex + 1}/${s.armed.length} ${WEAPONS[s.currentMount].name}` : '—';
+    const fb = $('firebar');
+    fb.classList.toggle('hidden', !laying);
+    if (laying) {
+      const msig = s.armed.join(',') + '|' + s.aimIndex;
+      if (msig !== hud._msig) {
+        hud._msig = msig;
+        $('firebar-mounts').innerHTML = s.armed.map((w, i) =>
+          `<button class="fb-mount${i === s.aimIndex ? ' active' : ''}" data-mount="${w}"` +
+          ` title="${WEAPONS[w].name}" style="--tracer:${WEAPONS[w].tracer}">` +
+          `${WEAPONS[w].icon}</button>`).join('');
+        $('firebar-mounts').querySelectorAll('[data-mount]').forEach((b) => {
+          b.onclick = () => game.aimMount(b.dataset.mount);
+        });
+      }
+    }
+
     $('ro-turn').textContent =
       s.state === 'over' ? '—'
-      : s.state === 'enemy' || (s.state === 'flight' && !s.canAbility) ? 'Incoming'
+      : s.state === 'arming' ? 'Arm up'
+      : s.state === 'enemy' ? 'Incoming'
       : s.state === 'flight' ? 'In flight'
-      : 'Your shot';
+      : 'Lay the guns';
   }
 
   /* ---------- arming the volley ----------
@@ -330,8 +351,7 @@ const UI = (() => {
     game.setLoadout(progress.owned);
     game.setModules(progress.modules);
     game.load(index);
-    // choose the opening volley before the first shot
-    if (game.owned.length > 1) showArming();
+    showArming();          // every turn opens with the arming panel
     const hint = $('hint');
     hint.textContent = BATTLES[index].tip || 'Drag back from your platform to aim & fire';
     hint.classList.remove('gone');
@@ -353,8 +373,11 @@ const UI = (() => {
       ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   }
 
+  function onTurnStart() { showArming(); }
+
   function bind(g) {
     game = g;
+    g.hooks.onTurnStart = onTurnStart;
     loadProgress();
     const stamp = buildStamp();
     ['build-title', 'build-map'].forEach((id) => { if ($(id)) $(id).textContent = stamp; });
@@ -373,8 +396,11 @@ const UI = (() => {
 
     $('btn-menu').onclick = () => { Sfx.click(); showLevels(); };
     $('btn-arm').onclick = () => { Sfx.click(); showArming(); };
-    $('btn-close-arming').onclick = () => { Sfx.click(); hide('arming'); };
-    $('btn-ready').onclick = () => { Sfx.click(); hide('arming'); };
+    $('btn-ready').onclick = () => { Sfx.click(); hide('arming'); game.beginAiming(); };
+    $('btn-close-arming').onclick = () => { Sfx.click(); hide('arming'); game.beginAiming(); };
+    $('btn-fire').onclick = () => { Sfx.click(); game.fireAll(); };
+    $('btn-next-mount').onclick = () => game.nextMount();
+    $('btn-prev-mount').onclick = () => game.cycleMount(-1);
     $('btn-close-levels').onclick = () => { Sfx.click(); hide('levels'); };
     $('btn-armory').onclick = () => { Sfx.click(); hide('levels'); showArmory(); };
     $('btn-armory-2').onclick = () => { Sfx.click(); showArmory(); };
@@ -398,7 +424,7 @@ const UI = (() => {
 
     renderGrid();
     return {
-      hud, showResult, showLevels, showArmory, showArming, renderArming, start, hide,
+      hud, showResult, showLevels, showArmory, showArming, renderArming, onTurnStart, start, hide,
       ownedWeapons: () => progress.owned,
       isOverlayOpen: () =>
         ['result', 'levels', 'title', 'armory', 'arming'].some((k) => !$(k).classList.contains('hidden')),

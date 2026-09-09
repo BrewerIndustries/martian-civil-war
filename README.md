@@ -5,24 +5,29 @@ at each other's throats; you pick a house, crew its **assault platform** — a
 building on wheels, bristling with guns — and trade broadsides with the enemy
 platform across broken ground until one of you stops answering.
 
-A turn is a **broadside, not a shot**. Before you aim you open the arming
-panel and choose which mounts to power for this volley — the platform has a
-**firepower budget**, so a big arsenal buys options, not raw output. Then you
-set one firing solution and every armed mount fires on it at once.
+**Every turn runs the same three beats:**
+
+1. **Arm** — the arming panel opens. Choose which mounts to power this volley
+   against your **firepower budget**; a big arsenal buys options, not raw
+   output.
+2. **Lay the guns** — aim each armed mount in turn, one firing solution each.
+   Dig with one, go for the hull with another, walk a third onto the ridge.
+3. **Fire all** — the whole volley goes at once.
 
 The terrain is a combatant, not scenery. Every shell removes real ground, so
 the ridge between you and them is a problem you can solve two ways: arc over
 it, or spend shots boring a tunnel straight through and fire down the corridor.
 
-**Play:** **Tab** opens the arming panel (it opens itself at the start of each
-battle) — click mounts to arm or hold them back within your firepower budget.
-Then drag back from your platform to aim and release to fire the volley. The
-preview draws one arc per armed mount, each stopping at its **apex** — enough
-to judge shape and reach, not enough to tell you where they land. **A/D** drive
-the platform (costs fuel), **Space** triggers every mid-flight trick in the
-volley at once. Arrow keys make fine gunnery adjustments (**←→** elevation,
-**↑↓** charge, hold **Shift** for coarse), **Enter** fires, **1–9** toggle
-mounts, **R** restarts, **Esc** opens the campaign map, **M** mutes.
+**Play:** the arming panel opens each turn (**Tab** reopens it, **1–9** toggle
+mounts). Then drag back from the platform to lay the current gun; **Enter**
+confirms it and moves to the next, and **Enter** on the last one fires the
+volley. **F** fires immediately, **[** and **]** step between mounts. The
+preview draws every armed mount's arc — the gun you are laying bright, the
+ones already set dim — each stopping at its **apex** unless you have bought
+better targeting. **A/D** drive the platform (costs fuel), **Space** triggers
+every mid-flight trick in the volley at once. Arrow keys fine-tune (**←→**
+elevation, **↑↓** charge, **Shift** for coarse), **R** restarts, **Esc** opens
+the campaign map, **M** mutes.
 
 - **Live (prod):** not yet published
 - **Dev:** http://localhost:4791
@@ -43,17 +48,24 @@ mounts, **R** restarts, **Esc** opens the campaign map, **M** mutes.
   platform can only power so much per volley, so owning more is about having
   the right tool available rather than firing everything at once.
 
-  | Mount | Cost | Behaviour |
-  |---|---|---|
-  | Laser Cannon | free | standard arc — flat, fast, honest |
-  | Scatter Pod | 10,000 | bursts into three during the climb (**Space** to burst early); loft it for a wide pattern, flat for a tight one |
-  | Fusion Charge | 22,000 | heavy and drops fast; **Space** detonates early. Huge crater |
-  | Volley Battery | 30,000 | **3 shells per launch**, fanned |
-  | Rail Spike | 38,000 | flat, wind-proof, **bores through rock**; **Space** punches forward |
-  | Ion Lance | 46,000 | **dead straight — no arc at all**, immune to wind, dissipates at range |
-  | Seeker Drone | 58,000 | **Space** locks it onto the enemy platform |
-  | Barrage Mortar | 66,000 | **4 shells** that walk out across the ground |
-  | Singularity | 80,000 | collapses a well; removes a great deal of landscape |
+  | Mount | Cost | fp | Behaviour |
+  |---|---|---|---|
+  | Laser Cannon | free | 18 | standard arc — flat, fast, honest |
+  | Scatter Pod | 10,000 | 22 | bursts into three during the climb |
+  | Fusion Charge | 22,000 | 34 | heavy, drops fast, enormous crater |
+  | Volley Battery | 30,000 | 30 | 3 shells, fanned |
+  | Flak Battery | 34,000 | 32 | 5 shells, wide fan |
+  | Rail Spike | 38,000 | 34 | flat, wind-proof, **bores through rock** |
+  | Thermite Charge | 40,000 | 30 | small bite, colossal hole — the tunneller's tool |
+  | Ion Lance | 46,000 | 30 | **dead straight, no arc**, dissipates at range |
+  | Gauss Repeater | 48,000 | 36 | 6 flat shells that walk across the target |
+  | EMP Burst | 56,000 | 34 | barely scratches, but cuts their next volley by 45% |
+  | Seeker Drone | 58,000 | 38 | **Space** locks it onto the enemy platform |
+  | Bunker Buster | 62,000 | 44 | drives into rock *then* detonates |
+  | Barrage Mortar | 66,000 | 40 | 4 shells walking out across the ground |
+  | MIRV Cluster | 88,000 | 50 | five independent warheads off one launch |
+  | Siege Howitzer | 96,000 | 54 | one enormous shell; ends arguments |
+  | Singularity | 110,000 | 48 | collapses a well; removes a lot of landscape |
 
   Mounts differ in how they *fly*, not just in their numbers. Each has its own
   gravity and wind response, so a Rail Spike shoots flat through a gale while a
@@ -66,16 +78,35 @@ mounts, **R** restarts, **Esc** opens the campaign map, **M** mutes.
 
   | Module | Cost | Effect |
   |---|---|---|
+  | **Hull** | | |
   | Ablative Plating | 14,000 | +70 hull |
-  | Reinforced Frame | 34,000 | +150 hull |
+  | Ceramic Composite | 28,000 | +120 hull |
+  | Reinforced Frame | 46,000 | +190 hull |
+  | Redundant Bulkheads | 78,000 | +300 hull |
+  | **Shields** | | |
+  | Reactive Armour | 12,000 | −10% damage taken |
   | Blast Baffles | 18,000 | near misses hurt 45% less |
-  | Deflector Screen | 26,000 | −15% of all damage taken |
+  | Deflector Screen | 30,000 | −15% damage taken |
+  | Deflector Lattice | 68,000 | −22% damage, −20% splash |
   | Repair Gantry | 42,000 | +14 hull per turn |
+  | Nanoforge | 86,000 | +34 hull per turn |
+  | **Power** | | |
   | Capacitor Bank | 16,000 | +22 firepower per volley |
+  | Superconductor Bus | 34,000 | +30 firepower per volley |
   | Fusion Core | 44,000 | +46 firepower per volley |
+  | **Targeting** | | |
+  | Rangefinder | 20,000 | marks where the gun you are laying comes down |
+  | Gyro Stabilisers | 26,000 | wind moves your shells 60% less |
+  | Ballistic Computer | 54,000 | plots the whole arc to impact, not just to the apex |
+  | **Drive** | | |
   | Reactor Uprate | 12,000 | +60 fuel per turn |
   | Heavy Treads | 20,000 | climbs steeper, drives quicker |
   | Inertial Dampers | 16,000 | −65% fall damage |
+
+  Targeting modules are worth calling out: they upgrade what you are allowed to
+  *see*, which in an artillery game is indistinguishable from skill. The
+  Ballistic Computer turning the apex-limited preview into a full plot to
+  impact is the single biggest purchase in the game.
 
 - **Fuel.** You get an allowance each turn (spent per pixel, refilled at the
   start of every turn), so **A/D** reposition the platform onto better ground.

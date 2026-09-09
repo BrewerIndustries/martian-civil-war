@@ -49,9 +49,18 @@
     <span class="ro wind"><b id="ro-wind">—</b><i>wind</i></span>
     <span class="ro fuel"><b id="ro-fuel">80</b><i>fuel</i><span class="fuel-bar"><span id="ro-fuel-fill"></span></span></span>
     <span class="ro"><b id="ro-turn">Your shot</b><i>turn</i></span>
+    <span class="ro mount"><b id="ro-mount">—</b><i>laying</i></span>
   </div>
 
   <div id="hint" class="hint">Drag back from your platform to aim &amp; fire</div>
+
+  <!-- laying the guns: step through each armed mount, then let fly -->
+  <div id="firebar" class="firebar hidden">
+    <button id="btn-prev-mount" class="fb-step" title="Previous mount ([)">‹</button>
+    <div id="firebar-mounts" class="fb-mounts"></div>
+    <button id="btn-next-mount" class="fb-step" title="Next mount (Enter / ])">›</button>
+    <button id="btn-fire" class="btn primary fb-fire" title="Fire the volley (F)">FIRE ALL</button>
+  </div>
 
   <!-- battle over -->
   <div id="result" class="overlay hidden">
@@ -96,7 +105,7 @@
 
       <div class="panel-foot">
         <span class="legend">Click a mount to arm or hold it back · <b>1–9</b> toggle · <b>Tab</b> reopen</span>
-        <button id="btn-ready" class="btn primary">Ready</button>
+        <button id="btn-ready" class="btn primary">Lay the Guns →</button>
       </div>
     </div>
   </div>
