@@ -5,22 +5,24 @@ at each other's throats; you pick a house, crew its **assault platform** — a
 building on wheels, bristling with guns — and trade broadsides with the enemy
 platform across broken ground until one of you stops answering.
 
-A turn is a **broadside, not a shot**. Every mount you own fires on the same
-firing solution, and because each flies differently the volley scatters across
-the target. Early on, with one mount, it is a precise duel; a full arsenal
-turns it into a barrage. You do not snipe with a fortress, you saturate.
+A turn is a **broadside, not a shot**. Before you aim you open the arming
+panel and choose which mounts to power for this volley — the platform has a
+**firepower budget**, so a big arsenal buys options, not raw output. Then you
+set one firing solution and every armed mount fires on it at once.
 
 The terrain is a combatant, not scenery. Every shell removes real ground, so
 the ridge between you and them is a problem you can solve two ways: arc over
 it, or spend shots boring a tunnel straight through and fire down the corridor.
 
-**Play:** drag back from your platform to aim, release to fire the whole
-broadside. The preview draws one arc per mount, each stopping at its **apex** —
-enough to judge shape and reach, not enough to tell you where they land.
-**A/D** drive the platform (costs fuel), **Space** triggers every mid-flight
-trick in the volley at once. Arrow keys make fine gunnery adjustments
-(**←→** elevation, **↑↓** charge, hold **Shift** for coarse), **Enter** fires,
-**R** restarts, **Esc** opens the campaign map, **M** mutes.
+**Play:** **Tab** opens the arming panel (it opens itself at the start of each
+battle) — click mounts to arm or hold them back within your firepower budget.
+Then drag back from your platform to aim and release to fire the volley. The
+preview draws one arc per armed mount, each stopping at its **apex** — enough
+to judge shape and reach, not enough to tell you where they land. **A/D** drive
+the platform (costs fuel), **Space** triggers every mid-flight trick in the
+volley at once. Arrow keys make fine gunnery adjustments (**←→** elevation,
+**↑↓** charge, hold **Shift** for coarse), **Enter** fires, **1–9** toggle
+mounts, **R** restarts, **Esc** opens the campaign map, **M** mutes.
 
 - **Live (prod):** not yet published
 - **Dev:** http://localhost:4791
@@ -37,8 +39,9 @@ trick in the volley at once. Arrow keys make fine gunnery adjustments
   spires, crater) with an enemy gunner that ranges you better as you progress.
   Stars are awarded on hull remaining; each battle unlocks the next.
 - **An armory.** Everything is permanent — bought once with salvage credits,
-  then fitted for every battle after. Buying a mount adds a barrel to the
-  broadside, so firepower scales directly with what you own.
+  then fitted for every battle after. Mounts cost **firepower** to arm, and the
+  platform can only power so much per volley, so owning more is about having
+  the right tool available rather than firing everything at once.
 
   | Mount | Cost | Behaviour |
   |---|---|---|
@@ -68,6 +71,8 @@ trick in the volley at once. Arrow keys make fine gunnery adjustments
   | Blast Baffles | 18,000 | near misses hurt 45% less |
   | Deflector Screen | 26,000 | −15% of all damage taken |
   | Repair Gantry | 42,000 | +14 hull per turn |
+  | Capacitor Bank | 16,000 | +22 firepower per volley |
+  | Fusion Core | 44,000 | +46 firepower per volley |
   | Reactor Uprate | 12,000 | +60 fuel per turn |
   | Heavy Treads | 20,000 | climbs steeper, drives quicker |
   | Inertial Dampers | 16,000 | −65% fall damage |
@@ -174,14 +179,36 @@ Things that are the way they are on purpose:
   ground the set of shots that reach you can be a narrow needle; a coarse grid
   found it only by luck, which made the difficulty setting meaningless on some
   maps. A poor gunner is now a good gunner with shaky hands.
+- **Fire control converges the volley.** Every mount fires on one firing
+  solution but each flies differently, so at first adding mounts just scattered
+  more of the volley into the dirt — a lone accurate gun beat a full arsenal
+  outright (a single laser took battle 12 while six mounts and four modules
+  lost it). Each mount now trims its own charge to land where the aim says.
+  It is solved by bisection against **flat-ground** range, because pure
+  ballistic range is monotonic in charge while real terrain makes landing
+  distance jump wherever a shot just clears a crest. A closed form (range ∝
+  v²/g) was tried first and was not good enough — it ignores drag, and the
+  low-drag mounts overshot by 400-600px; it survives as the opening guess.
+  Direct-fire mounts are exempt: an Ion Lance has no arc to match.
+- **The gunner ranges through fire control too.** It has to solve for where a
+  *trimmed* shell lands, or it aims one place and shoots another. Missing this
+  made the enemy miss every shot and left the player on 100% hull.
+- **The enemy's firepower budget grows slowly.** Yours only rises when you buy
+  a power module, so an enemy budget climbing every battle left the mid
+  campaign hopelessly out-volleyed — battle 6 was unwinnable with a sensible
+  three-mount loadout. It now tracks a player who has bought one power module
+  by mid campaign.
 - **Symmetric hulls, sized for broadsides.** Both platforms field the same base
   hull in a given battle (your modules are then yours alone). Hulls are far
   larger than when a turn meant one shell — a late volley puts a couple of
   hundred points downrange, and the old 188 hull would have ended a battle in
   two exchanges. Hull grows with the *battle*, never with the player's arsenal,
   so buying mounts genuinely tilts the fight; that is what credits are for.
-  Verified: battle 12 is unwinnable with one or two mounts (0/5) and
-  comfortable with six plus modules (5/5, ~42% hull left).
+  Verified across the campaign: battle 1 with the free mount alone is 4/4,
+  the middle battles sit at 4/4 with a loadout that keeps pace, battle 12 is
+  unwinnable if you never invested (0/3 on one mount) and a real fight when you
+  did (4/4 at ~31% hull). Note the test harness never uses mid-flight
+  abilities, so a human plays better than these numbers.
 - **Fixed 60 Hz accumulator**, so the game plays at the same speed on a 120 Hz
   display.
 - **The canvas freezes while an overlay is open.** Overlays sit on a

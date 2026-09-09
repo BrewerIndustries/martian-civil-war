@@ -10,6 +10,10 @@ const MAX_SPEED = 21;        // px per step at full power
 const WIND_ACCEL = 0.06;     // wind units -> px per step^2
 const STEP = 1 / 60;
 
+/* The notional mount the fire-control system ranges against: charge on the
+   HUD means "this far", and every real mount trims itself to match it. */
+const FIRE_CONTROL_STANDARD = { speed: 1, gravityScale: 1, drag: 0.0008, windScale: 1 };
+
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 class Game {
@@ -31,6 +35,7 @@ class Game {
     this.owned = [STARTING_WEAPON];
     this.modules = [];
     this.mods = this._rollUpModules();
+    this.armed = [STARTING_WEAPON];
     this.aimAngle = 42;        // degrees above horizontal
     this.aimPower = 0.7;       // 0..1
     this.fuel = PLATFORM.fuel;
@@ -55,16 +60,66 @@ class Game {
     const list = owned && owned.length ? owned.slice() : [STARTING_WEAPON];
     this.owned = weaponList().filter((w) => list.includes(w));
     if (!this.owned.length) this.owned = [STARTING_WEAPON];
+    this._refitArmed();
     this._emitHud();
   }
 
-  // Kept as a no-op: there is no weapon selection any more, the platform
-  // fires everything it has mounted.
-  selectWeapon() {}
+  /* ---------- the firing budget ----------
+     You own every mount you have bought, but the platform can only power so
+     many in one volley. Arming is therefore a per-turn decision — breadth of
+     arsenal buys options, not raw output. */
+
+  get firepower() { return PLATFORM.firepower + this.mods.firepower; }
+  get armedLoad() {
+    return this.armed.reduce((n, id) => n + (WEAPONS[id] ? WEAPONS[id].firepower : 0), 0);
+  }
+  canArm(id) {
+    const w = WEAPONS[id];
+    return !!w && this.owned.includes(id) &&
+           this.armedLoad + w.firepower <= this.firepower;
+  }
+
+  toggleMount(id) {
+    if (this.state !== 'aim' || !this.owned.includes(id)) return;
+    if (this.armed.includes(id)) {
+      this.armed = this.armed.filter((w) => w !== id);
+      Sfx.click();
+    } else if (this.canArm(id)) {
+      this.armed = weaponList().filter((w) => this.armed.includes(w) || w === id);
+      Sfx.click();
+    } else {
+      Sfx.thud(0.4);          // over budget — nothing to arm it with
+      return;
+    }
+    this._emitHud();
+  }
+
+  // Drop anything no longer affordable or no longer owned, then top up with
+  // whatever else fits, so the player is never left with an empty rack.
+  _refitArmed() {
+    const keep = [];
+    let load = 0;
+    for (const id of weaponList()) {
+      if (!this.owned.includes(id) || !this.armed.includes(id)) continue;
+      const w = WEAPONS[id];
+      if (load + w.firepower <= this.firepower) { keep.push(id); load += w.firepower; }
+    }
+    if (!keep.length) {
+      for (const id of weaponList()) {
+        if (!this.owned.includes(id)) continue;
+        const w = WEAPONS[id];
+        if (load + w.firepower <= this.firepower) { keep.push(id); load += w.firepower; }
+      }
+    }
+    this.armed = keep;
+  }
+
+  selectWeapon(id) { this.toggleMount(id); }
 
   setModules(ids) {
     this.modules = (ids || []).filter((m) => MODULES[m]);
     this.mods = this._rollUpModules();
+    this._refitArmed();
     if (this.player) {
       // refit mid-campaign: keep damage taken, raise the ceiling
       const taken = this.player.maxHp - this.player.hp;
@@ -76,7 +131,7 @@ class Game {
 
   _rollUpModules() {
     const m = { hull: 0, damageReduce: 0, splashReduce: 0, regen: 0,
-                fuel: 0, climb: 0, driveSpeed: 0, fallReduce: 0 };
+                fuel: 0, climb: 0, driveSpeed: 0, fallReduce: 0, firepower: 0 };
     for (const id of this.modules || []) {
       const mod = MODULES[id];
       if (!mod) continue;
@@ -125,6 +180,7 @@ class Game {
     });
 
     this.foeMounts = (spec.enemyMounts || ['laser']).slice();
+    this._refitArmed();
     this.player = this._makePlatform(spec.playerX, this.faction, spec.playerHp + this.mods.hull, 1);
     this.foe = this._makePlatform(spec.enemyX, otherFaction(this.faction), spec.enemyHp, -1);
 
@@ -284,8 +340,81 @@ class Game {
     this._emitHud();
   }
 
+  /* Fire control. Every mount fires on one firing solution, but each flies
+     differently — so without this, adding mounts to a volley just scattered
+     more of it into the dirt, and a lone accurate gun beat a full arsenal
+     outright. Each mount now trims its own charge to land where the aim says.
+
+     Solved against FLAT-GROUND range, not against the terrain: pure ballistic
+     range is monotonic in charge, so a bisection is safe, whereas real ground
+     makes landing distance jump discontinuously wherever a shot just clears a
+     crest. Terrain then does what terrain does.
+
+     A closed form (range ∝ v²/g) was tried first and was not good enough — it
+     ignores drag, and the low-drag mounts overshot the rest of the volley by
+     400-600px. It survives as the opening guess.
+
+     Direct-fire mounts are exempt: an Ion Lance has no arc to match, and
+     pretending otherwise would erase what makes it distinct. */
+  _flatRange(spec, angle, power) {
+    const a = angle * Math.PI / 180;
+    const speed = power * MAX_SPEED * (spec.speed || 1);
+    let vx = Math.cos(a) * speed, vy = -Math.sin(a) * speed;
+    let x = 0, y = 0;
+    const gs = spec.gravityScale ?? 1;
+    const drag = 1 - (spec.drag || 0);
+    const wind = this.wind * WIND_ACCEL * (spec.windScale ?? 1);
+    for (let i = 0; i < 1500; i++) {
+      vy += G * gs;
+      vx += wind;
+      vx *= drag; vy *= drag;
+      x += vx; y += vy;
+      if (i > 2 && y >= 0) break;        // back down to launch height
+    }
+    return x;
+  }
+
+  trimPower(weaponId, angle, power) {
+    const w = WEAPONS[weaponId];
+    if (!w) return power;
+    const gs = w.gravityScale ?? 1;
+    if (gs <= 0) return power;
+
+    const key = `${weaponId}|${angle.toFixed(1)}|${power.toFixed(3)}|${this.wind.toFixed(3)}`;
+    this._trimCache = this._trimCache || new Map();
+    if (this._trimCache.has(key)) return this._trimCache.get(key);
+
+    const target = this._flatRange(FIRE_CONTROL_STANDARD, angle, power);
+    let lo = 0.05, hi = 1;
+    // seed from the drag-free closed form, then bisect on true flat range
+    let p = clamp(power * Math.sqrt(gs) / (w.speed || 1), lo, hi);
+    for (let i = 0; i < 12; i++) {
+      const got = this._flatRange(w, angle, p);
+      if (Math.abs(got - target) < 4) break;
+      if (got > target) hi = p; else lo = p;
+      p = (lo + hi) / 2;
+    }
+    if (this._trimCache.size > 400) this._trimCache.clear();
+    this._trimCache.set(key, p);
+    return p;
+  }
+
   rosterFor(owner) {
-    return owner === this.player ? this.owned : (this.foeMounts || ['laser']);
+    return owner === this.player ? this.armed : (this.foeMounts || ['laser']);
+  }
+
+  /* The enemy runs the same budget: it arms what it can afford from its roster,
+     shuffled, so successive volleys are not identical. */
+  _armFoe() {
+    const budget = this.battle.enemyFirepower || 40;
+    const pool = (this.foeMounts || ['laser']).slice().sort(() => Math.random() - 0.5);
+    const picked = [];
+    let load = 0;
+    for (const id of pool) {
+      const w = WEAPONS[id];
+      if (w && load + w.firepower <= budget) { picked.push(id); load += w.firepower; }
+    }
+    return picked.length ? picked : ['laser'];
   }
 
   _launch(owner, angle, power, weaponId) {
@@ -300,7 +429,7 @@ class Game {
     for (let k = 0; k < count; k++) {
       const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;
       const ang = (angle + t * (salvo ? salvo.spread : 0)) * Math.PI / 180;
-      const pw = clamp(power + t * (salvo ? salvo.stagger : 0), 0.05, 1);
+      const pw = clamp(this.trimPower(weaponId, angle, power) + t * (salvo ? salvo.stagger : 0), 0.05, 1);
       const speed = pw * MAX_SPEED * w.speed;
       this.shells.push({
         x: o.x, y: o.y,
@@ -476,7 +605,9 @@ class Game {
     const w = WEAPONS[weaponId || this.owned[0]];
     if (!w) return null;
     const angle = angleOverride === undefined ? this.aimAngle : angleOverride;
-    const power = clamp(powerOverride === undefined ? this.aimPower : powerOverride, 0.02, 1);
+    const raw = powerOverride === undefined ? this.aimPower : powerOverride;
+    // preview through the same fire control the guns use, or it lies
+    const power = clamp(this.trimPower(weaponId || this.owned[0], angle, raw), 0.02, 1);
     const a = angle * Math.PI / 180;
     const speed = power * MAX_SPEED * w.speed;
     const o = this.muzzle(pl, this.aimAngle);
@@ -626,8 +757,11 @@ class Game {
     // the same solution and lands where its own ballistics take it.
     const weaponId = this.foeMounts.includes('laser') ? 'laser' : this.foeMounts[0];
     const aimX = this.player.x, aimY = this.player.y - 14;
+    // Range through the same fire control the guns use. Without this the
+    // gunner solves for where an untrimmed shell would land and then fires a
+    // trimmed one, so every shot misses by the width of the correction.
     const err = (ang, pw) => {
-      const r = this.trace(this.foe, ang, pw, weaponId, 600);
+      const r = this.trace(this.foe, ang, this.trimPower(weaponId, ang, pw), weaponId, 600);
       return Math.hypot(r.x - aimX, r.y - aimY);
     };
 
@@ -726,7 +860,7 @@ class Game {
     if (this.state === 'enemy' && now >= this.enemyAt) {
       const shot = this._enemyShot();
       this.foe.barrel = shot.angle;
-      this.fire(this.foe, shot.angle, shot.power, this.foeMounts);
+      this.fire(this.foe, shot.angle, shot.power, this._armFoe());
       return;
     }
   }
@@ -768,6 +902,9 @@ class Game {
       modules: this.modules,
       mods: this.mods,
       owned: this.owned,
+      armed: this.armed,
+      firepower: this.firepower,
+      armedLoad: this.armedLoad,
       foeMounts: this.foeMounts || [],
       angle: this.aimAngle,
       power: this.aimPower,

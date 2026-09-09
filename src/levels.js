@@ -41,28 +41,28 @@ const WEAPONS = {
        penetrate     px of solid rock it will bore through instead of stopping
        ability       what Space does to it mid-flight */
   laser: {
-    icon: '⚡', name: 'Laser Cannon', cost: 0, order: 0,
+    icon: '⚡', name: 'Laser Cannon', cost: 0, order: 0, firepower: 18,
     r: 7, speed: 1.14, damage: 30, blast: 46, dig: 36, drag: 0.0006,
     gravityScale: 1, windScale: 1, ability: null, tracer: '#7fe8ff',
     behaviour: 'Standard arc',
     blurb: 'Standard mount. Flat, fast and honest. Digs a modest hole.',
   },
   scatter: {
-    icon: '✳', name: 'Scatter Pod', cost: 10000, order: 1,
+    icon: '✳', name: 'Scatter Pod', cost: 10000, order: 1, firepower: 22,
     r: 8, speed: 1.02, damage: 22, blast: 42, dig: 30, drag: 0.0009, splitFan: 3, splitSpeed: 0.11, autoAbility: true,
     gravityScale: 1, windScale: 1.3, ability: 'split', tracer: '#d8a8f0',
     behaviour: 'Splits into 3 in the air',
     blurb: 'Bursts into three shells that crater a stretch of ground. Goes off on its own during the climb; Space bursts it early. Loft it and the pattern widens — a flat shot groups tight.',
   },
   fusion: {
-    icon: '✸', name: 'Fusion Charge', cost: 22000, order: 2,
+    icon: '✸', name: 'Fusion Charge', cost: 22000, order: 2, firepower: 34,
     r: 10, speed: 0.96, damage: 46, blast: 98, dig: 86, drag: 0.0011,
     gravityScale: 1.15, windScale: 0.7, ability: 'detonate', tracer: '#9fd93a',
     behaviour: 'Heavy, drops fast',
     blurb: 'Space detonates it early. Enormous crater — the tunneller’s pick.',
   },
   volley: {
-    icon: '≡', name: 'Volley Battery', cost: 30000, order: 3,
+    icon: '≡', name: 'Volley Battery', cost: 30000, order: 3, firepower: 30,
     r: 6, speed: 1.10, damage: 18, blast: 38, dig: 26, drag: 0.0006,
     gravityScale: 1, windScale: 1, ability: null, tracer: '#7fe8ff',
     salvo: { count: 3, spread: 3.6, stagger: 0 },
@@ -70,7 +70,7 @@ const WEAPONS = {
     blurb: 'Three bolts per launch in a tight fan. Forgiving when your line is good but your range is not.',
   },
   rail: {
-    icon: '⌁', name: 'Rail Spike', cost: 38000, order: 4,
+    icon: '⌁', name: 'Rail Spike', cost: 38000, order: 4, firepower: 34,
     r: 5, speed: 1.12, damage: 58, blast: 34, dig: 20, drag: 0.0003,
     gravityScale: 0.72, windScale: 0.3, ability: 'dive', penetrate: 340,
     tracer: '#ffd166',
@@ -78,7 +78,7 @@ const WEAPONS = {
     blurb: 'Flat, heavy and unbothered by wind. Bores clean through rock instead of stopping at it.',
   },
   ion: {
-    icon: '⌖', name: 'Ion Lance', cost: 46000, order: 5,
+    icon: '⌖', name: 'Ion Lance', cost: 46000, order: 5, firepower: 30,
     r: 5, speed: 1.85, damage: 44, blast: 30, dig: 24, drag: 0,
     gravityScale: 0, windScale: 0, range: 1000, ability: null,
     tracer: '#a8f0ff',
@@ -86,14 +86,14 @@ const WEAPONS = {
     blurb: 'Ignores gravity and wind entirely — but it cannot arc over anything, and the beam dissipates at range. Deadly down a tunnel you have already bored.',
   },
   seeker: {
-    icon: '◈', name: 'Seeker Drone', cost: 58000, order: 6,
+    icon: '◈', name: 'Seeker Drone', cost: 58000, order: 6, firepower: 38,
     r: 8, speed: 1.00, damage: 40, blast: 60, dig: 48, drag: 0.0008,
     gravityScale: 0.9, windScale: 0.8, ability: 'seek', tracer: '#8fd0ff',
     behaviour: 'Homes on command',
     blurb: 'Space locks it onto the enemy platform. It will find its own way in.',
   },
   barrage: {
-    icon: '∴', name: 'Barrage Mortar', cost: 66000, order: 7,
+    icon: '∴', name: 'Barrage Mortar', cost: 66000, order: 7, firepower: 40,
     r: 8, speed: 0.98, damage: 22, blast: 54, dig: 46, drag: 0.0010,
     gravityScale: 1.1, windScale: 0.9, ability: 'detonate', tracer: '#ffb04a',
     salvo: { count: 4, spread: 0.8, stagger: 0.055 },
@@ -101,7 +101,7 @@ const WEAPONS = {
     blurb: 'Four shells that walk out across the ground. Finds range and digs a trench doing it.',
   },
   singularity: {
-    icon: '◍', name: 'Singularity', cost: 80000, order: 8,
+    icon: '◍', name: 'Singularity', cost: 80000, order: 8, firepower: 46,
     r: 9, speed: 0.95, damage: 34, blast: 155, dig: 145, drag: 0.0012,
     gravityScale: 1, windScale: 1, ability: 'implode', tracer: '#c9a0ff',
     behaviour: 'Collapses a well',
@@ -140,6 +140,14 @@ const MODULES = {
     kind: 'engine', icon: '⌬', name: 'Reactor Uprate', cost: 12000, order: 5,
     fuel: 60, blurb: 'More power to the drives. +60 fuel every turn.',
   },
+  capacitor: {
+    kind: 'power', icon: '⚡', name: 'Capacitor Bank', cost: 16000, order: 8,
+    firepower: 22, blurb: 'Dumps more charge into a single volley. +22 firepower.',
+  },
+  core: {
+    kind: 'power', icon: '◎', name: 'Fusion Core', cost: 44000, order: 9,
+    firepower: 46, blurb: 'A second reactor feeding the gun decks. +46 firepower.',
+  },
   treads: {
     kind: 'engine', icon: '⚙', name: 'Heavy Treads', cost: 20000, order: 6,
     climb: 9, driveSpeed: 0.7, blurb: 'Climbs steeper ground and moves quicker over it.',
@@ -153,6 +161,7 @@ const MODULES = {
 const MODULE_KINDS = [
   { id: 'hull', label: 'Hull' },
   { id: 'shield', label: 'Shields' },
+  { id: 'power', label: 'Power' },
   { id: 'engine', label: 'Drive' },
 ];
 
@@ -164,6 +173,11 @@ const weaponList = () => Object.keys(WEAPONS).sort((a, b) => WEAPONS[a].order - 
 const PLATFORM = {
   storeys: 3,      // it is a building on wheels, not a tank
   hp: 100, w: 96, h: 112,   // hit box must cover the whole structure
+  /* Firepower is the per-volley budget. You own every mount you have bought,
+     but the platform can only power so many of them at once, so each turn is a
+     choice about what to bring to bear rather than "fire everything". This is
+     what keeps a big arsenal interesting instead of merely additive. */
+  firepower: 56,
   fuel: 80,        // drive allowance, refilled at the start of each of your turns
   climb: 13,       // tallest step the tracks can take, in px
   speed: 1.5,      // px per physics step
@@ -227,6 +241,12 @@ BATTLES.forEach((b, i) => {
   b.playerX = 210;
   b.enemyX = 1590;
   b.enemyMounts = enemyRoster(i);
+  /* Grows slowly on purpose. The player's budget only rises when they BUY a
+     power module, so an enemy budget that climbed every battle left the
+     mid-campaign hopelessly out-volleyed — battle 6 was unwinnable with a
+     sensible three-mount loadout. This tracks a player who has bought one
+     power module by the middle of the campaign. */
+  b.enemyFirepower = 38 + i * 4.5;
 });
 
 // Kept for the campaign map and result screen, which speak in "assaults".

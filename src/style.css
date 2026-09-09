@@ -447,3 +447,88 @@ html, body {
   font-style: normal; letter-spacing: .06em; text-transform: none;
   font-size: 11px; color: var(--ink-dim); font-weight: 400;
 }
+
+
+/* firing rack: armed vs held-back mounts */
+.ammo { position: relative; }
+.ammo > i {
+  position: absolute; bottom: -3px; right: -3px;
+  font-style: normal; font-size: 8px; font-weight: 700;
+  padding: 1px 3px; border-radius: 5px;
+  background: #1b1113; color: var(--ink-dim);
+  border: 1px solid var(--line);
+}
+.ammo:not(.current) { opacity: .46; filter: grayscale(.6); }
+.ammo.current > i { background: var(--faction); color: #1c0f0b; border-color: transparent; }
+.ammo.over { opacity: .22; cursor: not-allowed; }
+.ammo.module { opacity: 1; filter: none; }
+
+
+/* ---------- arming the volley ---------- */
+
+.fp-meter { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.fp-bar {
+  flex: 1; height: 12px; border-radius: 7px;
+  background: rgba(0,0,0,.42);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.fp-bar > span { display: block; height: 100%; width: 0; background: var(--good); transition: width .16s ease, background .16s ease; }
+.fp-label { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+.fp-label b { color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; }
+
+.arming-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 9px;
+  max-height: min(46vh, 380px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.arming-grid::-webkit-scrollbar { width: 8px; }
+.arming-grid::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+
+.arm-card {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: inherit; font: inherit; text-align: left;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .15s ease, background .15s ease, opacity .15s;
+}
+.arm-card:hover { transform: translateY(-2px); }
+.arm-card.armed { border-color: var(--faction); background: var(--panel-2); box-shadow: 0 0 0 1px var(--faction) inset; }
+.arm-card.unaffordable { opacity: .38; cursor: not-allowed; }
+.arm-card.unaffordable:hover { transform: none; }
+
+.arm-key {
+  position: absolute; top: 6px; right: 8px;
+  font-size: 9px; color: #6f5a4c; font-weight: 700;
+}
+.arm-icon { font-size: 20px; width: 26px; text-align: center; }
+.arm-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.arm-body b { font-size: 13px; }
+.arm-body i { font-style: normal; font-size: 11px; color: var(--gold); }
+.arm-body em {
+  font-style: normal; font-size: 10px; letter-spacing: .06em;
+  text-transform: uppercase; color: #8a7264;
+}
+.arm-fp {
+  font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+.arm-card.armed .arm-fp { color: var(--faction); }
+.arm-fp small { display: block; font-size: 8px; letter-spacing: .1em; }
+
+.arming-fitted {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line);
+}
+.fitted-label { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); }
+.fitted-chip {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  background: #2b3a22; border: 1px solid #4c6b3a; color: #cfe6b4;
+}

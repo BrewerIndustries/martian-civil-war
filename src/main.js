@@ -55,6 +55,23 @@
 
     if (e.repeat) return;
 
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (document.getElementById('arming').classList.contains('hidden')) ui.showArming();
+      else ui.hide('arming');
+      return;
+    }
+
+    // Number keys arm and disarm mounts for this volley, from the panel or the field.
+    if (e.key >= '1' && e.key <= '9') {
+      const armingOpen = !document.getElementById('arming').classList.contains('hidden');
+      if (!open || armingOpen) {
+        const pick = game.owned[Number(e.key) - 1];
+        if (pick) { game.toggleMount(pick); if (armingOpen) ui.renderArming(); }
+      }
+      return;
+    }
+
     if (e.key === 'r' || e.key === 'R') { if (!open) game.restart(); return; }
     if (e.key === 'm' || e.key === 'M') {
       document.getElementById('btn-mute').textContent = Sfx.toggleMute() ? '🔇' : '🔊';

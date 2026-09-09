@@ -58,21 +58,31 @@ const UI = (() => {
     $('hud-score').textContent = fmt(s.score);
     $('hud-credits').textContent = fmt(progress.credits);
 
-    /* The arsenal, not a selection: every mount fires each turn, so this is a
-       readout of what the platform will put downrange. Rebuilt only when it
-       changes — the HUD is emitted on every drag frame, and recreating these
-       nodes 60 times a second restarts their transitions and makes them
-       flicker. */
+    /* The firing rack: every mount you own, with the ones armed for this volley
+       lit and the rest dimmed. Rebuilt only when it changes — the HUD is
+       emitted on every drag frame, and recreating these nodes 60 times a
+       second restarts their transitions and makes them flicker. */
     const rack = $('weapon-rack');
-    const sig = s.owned.join(',') + '|' + (s.modules || []).join(',') + '|' + (s.canAbility ? 1 : 0);
+    const sig = s.owned.join(',') + '|' + (s.armed || []).join(',') + '|' +
+                (s.modules || []).join(',') + '|' + s.firepower + '|' + (s.canAbility ? 1 : 0);
     if (sig !== hud._sig) {
       hud._sig = sig;
-      const mounts = s.owned.map((w) =>
-        `<span class="ammo current" title="${WEAPONS[w].name} — ${WEAPONS[w].behaviour}">${WEAPONS[w].icon}</span>`).join('');
+      const armed = s.armed || [];
+      const mounts = s.owned.map((w) => {
+        const on = armed.includes(w);
+        const spec = WEAPONS[w];
+        const affordable = on || (s.armedLoad + spec.firepower <= s.firepower);
+        return `<button class="ammo${on ? ' current' : ''}${affordable ? '' : ' over'}" ` +
+          `data-weapon="${w}" title="${spec.name} — ${spec.firepower} firepower — ${spec.behaviour}">` +
+          `${spec.icon}<i>${spec.firepower}</i></button>`;
+      }).join('');
       const fitted = (s.modules || []).map((m) =>
         `<span class="ammo module" title="${MODULES[m].name} — ${MODULES[m].blurb}">${MODULES[m].icon}</span>`).join('');
       rack.innerHTML = mounts + (fitted ? `<span class="rack-split"></span>${fitted}` : '') +
-        `<span class="ammo-name">${s.canAbility ? 'Space!' : s.owned.length + ' mounts'}</span>`;
+        `<span class="ammo-name">${s.canAbility ? 'Space!' : `${s.armedLoad}/${s.firepower} fp`}</span>`;
+      rack.querySelectorAll('[data-weapon]').forEach((b) => {
+        b.onclick = () => game.toggleMount(b.dataset.weapon);
+      });
     }
 
     $('ro-angle').textContent = `${Math.round(s.angle)}°`;
@@ -95,6 +105,55 @@ const UI = (() => {
       : s.state === 'enemy' || (s.state === 'flight' && !s.canAbility) ? 'Incoming'
       : s.state === 'flight' ? 'In flight'
       : 'Your shot';
+  }
+
+  /* ---------- arming the volley ----------
+     A deliberate step before the shot rather than a fiddle in the HUD: you
+     decide what the platform powers this turn, then you aim. It opens itself
+     at the start of a battle and is one key away after that — auto-opening
+     every single turn would be nagging over a ten-turn fight. */
+
+  function renderArming() {
+    const cap = game.firepower;
+    const used = game.armedLoad;
+    $('fp-cap').textContent = cap;
+    $('fp-used').textContent = used;
+    const fill = $('fp-fill');
+    fill.style.width = Math.min(100, (used / cap) * 100).toFixed(1) + '%';
+    fill.style.background = used > cap * 0.9 ? '#ff7a4a' : used > cap * 0.6 ? '#f0b73c' : '#9fd93a';
+
+    const grid = $('arming-grid');
+    grid.innerHTML = '';
+    game.owned.forEach((id, i) => {
+      const w = WEAPONS[id];
+      const on = game.armed.includes(id);
+      const affordable = on || game.canArm(id);
+      const el = document.createElement('button');
+      el.className = 'arm-card' + (on ? ' armed' : '') + (affordable ? '' : ' unaffordable');
+      el.innerHTML =
+        `<span class="arm-key">${i + 1}</span>` +
+        `<span class="arm-icon" style="color:${w.tracer}">${w.icon}</span>` +
+        `<span class="arm-body">` +
+          `<b>${w.name}</b>` +
+          `<i>${w.behaviour}</i>` +
+          `<em>${w.damage} dmg${w.salvo ? ` ×${w.salvo.count}` : ''} · ${w.blast} blast · ${w.dig} dig</em>` +
+        `</span>` +
+        `<span class="arm-fp">${w.firepower}<small>fp</small></span>`;
+      el.onclick = () => { game.toggleMount(id); renderArming(); };
+      grid.appendChild(el);
+    });
+
+    const fitted = $('arming-fitted');
+    fitted.innerHTML = game.modules.length
+      ? '<span class="fitted-label">Fitted</span>' + game.modules.map((m) =>
+          `<span class="fitted-chip" title="${MODULES[m].blurb}">${MODULES[m].icon} ${MODULES[m].name}</span>`).join('')
+      : '<span class="fitted-label">No modules fitted — see the Armory</span>';
+  }
+
+  function showArming() {
+    if (!game.battle || game.state === 'over') return;
+    renderArming();
+    show('arming');
   }
 
   /* ---------- armory ---------- */
@@ -260,17 +319,19 @@ const UI = (() => {
   const show = (id) => { $(id).classList.remove('hidden'); if (game) game.paused = true; };
   const hide = (id) => {
     $(id).classList.add('hidden');
-    const open = ['result', 'levels', 'title', 'armory'].some((k) => !$(k).classList.contains('hidden'));
+    const open = ['result', 'levels', 'title', 'armory', 'arming'].some((k) => !$(k).classList.contains('hidden'));
     if (game && !open) game.paused = false;
   };
 
   /* ---------- flow ---------- */
 
   function start(index) {
-    ['title', 'result', 'levels', 'armory'].forEach(hide);
+    ['title', 'result', 'levels', 'armory', 'arming'].forEach(hide);
     game.setLoadout(progress.owned);
     game.setModules(progress.modules);
     game.load(index);
+    // choose the opening volley before the first shot
+    if (game.owned.length > 1) showArming();
     const hint = $('hint');
     hint.textContent = BATTLES[index].tip || 'Drag back from your platform to aim & fire';
     hint.classList.remove('gone');
@@ -311,6 +372,9 @@ const UI = (() => {
     });
 
     $('btn-menu').onclick = () => { Sfx.click(); showLevels(); };
+    $('btn-arm').onclick = () => { Sfx.click(); showArming(); };
+    $('btn-close-arming').onclick = () => { Sfx.click(); hide('arming'); };
+    $('btn-ready').onclick = () => { Sfx.click(); hide('arming'); };
     $('btn-close-levels').onclick = () => { Sfx.click(); hide('levels'); };
     $('btn-armory').onclick = () => { Sfx.click(); hide('levels'); showArmory(); };
     $('btn-armory-2').onclick = () => { Sfx.click(); showArmory(); };
@@ -334,10 +398,10 @@ const UI = (() => {
 
     renderGrid();
     return {
-      hud, showResult, showLevels, showArmory, start, hide,
+      hud, showResult, showLevels, showArmory, showArming, renderArming, start, hide,
       ownedWeapons: () => progress.owned,
       isOverlayOpen: () =>
-        ['result', 'levels', 'title', 'armory'].some((k) => !$(k).classList.contains('hidden')),
+        ['result', 'levels', 'title', 'armory', 'arming'].some((k) => !$(k).classList.contains('hidden')),
     };
   }
 

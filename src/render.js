@@ -158,6 +158,7 @@ const R = (() => {
     const recoil = pl.recoil || 0;
     const aim = (isPlayer ? game.aimAngle : pl.barrel);
     const roster = isPlayer ? game.owned : (game.foeMounts || ['laser']);
+    const armedSet = isPlayer ? game.armed : roster;
 
     const W = 96, storeyH = 26, storeys = 3;
     const bodyTop = -34 - storeys * storeyH;
@@ -248,8 +249,12 @@ const R = (() => {
       rr(ctx, 2, -3.6, 26, 7.2, 2); ctx.fill();
       ctx.strokeStyle = '#2d3138'; ctx.lineWidth = 1.2;
       rr(ctx, 2, -3.6, 26, 7.2, 2); ctx.stroke();
-      ctx.fillStyle = w.tracer;                    // emitter glows its own colour
+      // an armed mount lights its emitter; an unarmed one sits cold
+      const live = armedSet.includes(id) && !dead;
+      ctx.fillStyle = live ? w.tracer : '#3a3f47';
+      if (live) { ctx.shadowColor = w.tracer; ctx.shadowBlur = 7; }
       rr(ctx, 25, -4.4, 4, 8.8, 1.5); ctx.fill();
+      ctx.shadowBlur = 0;
       ctx.restore();
     });
 
@@ -275,7 +280,8 @@ const R = (() => {
       ctx.fillStyle = 'rgba(255,255,255,.7)';
       ctx.font = 'bold 9px "Trebuchet MS", sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`${Math.ceil(pl.hp)} · ${roster.length} mounts`, x, by - 3);
+      const live = isPlayer ? game.armed.length : roster.length;
+      ctx.fillText(`${Math.ceil(pl.hp)} · ${live}/${roster.length} armed`, x, by - 3);
       ctx.restore();
     }
   }
@@ -325,7 +331,7 @@ const R = (() => {
        which is the only way to aim a fortress that cannot snipe. Each arc still
        stops at its own apex, so the impact points stay yours to work out. */
     const arcs = [];
-    for (const id of game.owned) {
+    for (const id of game.armed) {
       const w = WEAPONS[id];
       const salvo = w.salvo;
       const count = salvo ? salvo.count : 1;
@@ -333,7 +339,7 @@ const R = (() => {
         const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;
         const p = game.aimPreview(
           game.aimAngle + t * (salvo ? salvo.spread : 0),
-          game.aimPower + t * (salvo ? salvo.stagger : 0), id);
+          game.aimPower + t * (salvo ? salvo.stagger : 0) / 2, id);
         if (p && p.points.length > 1) arcs.push({ p, w, lead: k === 0 });
       }
     }

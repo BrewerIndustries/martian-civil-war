@@ -36,6 +36,7 @@
         <span class="score-label">Score</span>
         <span id="hud-score">0</span>
       </div>
+      <button id="btn-arm" class="icon-btn" title="Arm the volley (Tab)">⊞</button>
       <button id="btn-mute" class="icon-btn" title="Mute (M)">🔊</button>
       <button id="btn-retry" class="icon-btn" title="Restart battle (R)">↻</button>
     </div>
@@ -69,6 +70,33 @@
         <button id="btn-replay" class="btn ghost">Retry</button>
         <button id="btn-armory-2" class="btn ghost">Armory</button>
         <button id="btn-next" class="btn primary">Next Battle</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- arming: choose the volley before you aim -->
+  <div id="arming" class="overlay hidden">
+    <div class="panel wide">
+      <div class="panel-head">
+        <div>
+          <h2>Arm the Volley</h2>
+          <p class="sub">Every armed mount fires together on one firing solution.
+            The platform can only power so much at once.</p>
+        </div>
+        <button id="btn-close-arming" class="icon-btn">✕</button>
+      </div>
+
+      <div class="fp-meter">
+        <div class="fp-bar"><span id="fp-fill"></span></div>
+        <span class="fp-label"><b id="fp-used">0</b> / <span id="fp-cap">0</span> firepower</span>
+      </div>
+
+      <div id="arming-grid" class="arming-grid"></div>
+      <div id="arming-fitted" class="arming-fitted"></div>
+
+      <div class="panel-foot">
+        <span class="legend">Click a mount to arm or hold it back · <b>1–9</b> toggle · <b>Tab</b> reopen</span>
+        <button id="btn-ready" class="btn primary">Ready</button>
       </div>
     </div>
   </div>
