@@ -150,8 +150,114 @@ const R = (() => {
   /* An assault platform is a building on wheels — a rolling fortress, not a
      tank. Every mount the platform owns is drawn on it, so the silhouette
      itself tells you how much firepower is about to go downrange. */
+  /* A fortress: the same idea as a platform, dug into the ridge instead of
+     riding on wheels. Wider, taller, more guns, and it cannot be driven off
+     its ground — which also means it makes a much broader target, and the
+     rock under it can still be taken away. */
+  function fortress(ctx, pl, game) {
+    const f = pl.faction;
+    const dead = pl.hp <= 0;
+    const W = pl.w, H = pl.h;
+    const roster = game.foeMounts || ['laser'];
+    const armedSet = roster;
+
+    ctx.save();
+    ctx.translate(pl.x, pl.y);
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.beginPath(); ctx.ellipse(0, 0, W * 0.58, 12, 0, 0, 6.283); ctx.fill();
+    if (dead) ctx.globalAlpha = 0.5;
+
+    // footing sunk into the ground
+    ctx.fillStyle = '#4a4038';
+    rr(ctx, -W / 2 - 6, -22, W + 12, 26, 4); ctx.fill();
+    ctx.strokeStyle = '#2b2520'; ctx.lineWidth = 2;
+    rr(ctx, -W / 2 - 6, -22, W + 12, 26, 4); ctx.stroke();
+
+    // three towers: low flanks, tall keep
+    const towers = [
+      { x: -W * 0.34, w: W * 0.28, h: H * 0.62 },
+      { x: 0,          w: W * 0.36, h: H },
+      { x: W * 0.34,  w: W * 0.28, h: H * 0.68 },
+    ];
+    for (const t of towers) {
+      const g = ctx.createLinearGradient(0, -t.h, 0, 0);
+      g.addColorStop(0, '#8b8378');
+      g.addColorStop(1, '#4f4a44');
+      ctx.fillStyle = g;
+      rr(ctx, t.x - t.w / 2, -t.h, t.w, t.h - 8, 3); ctx.fill();
+      ctx.strokeStyle = '#2f2b27'; ctx.lineWidth = 2;
+      rr(ctx, t.x - t.w / 2, -t.h, t.w, t.h - 8, 3); ctx.stroke();
+
+      // crenellations
+      ctx.fillStyle = '#6d665d';
+      const merlons = Math.max(3, Math.round(t.w / 16));
+      for (let i = 0; i < merlons; i++) {
+        const mx = t.x - t.w / 2 + i * (t.w / merlons);
+        ctx.fillRect(mx, -t.h - 8, t.w / merlons - 4, 9);
+      }
+      // arrow slits, lit while it lives
+      ctx.fillStyle = dead ? 'rgba(30,26,24,.9)' : 'rgba(255,196,120,.8)';
+      const rows = Math.max(2, Math.round(t.h / 34));
+      for (let r = 0; r < rows; r++) {
+        ctx.fillRect(t.x - 2.5, -t.h + 16 + r * 30, 5, 12);
+      }
+    }
+
+    // house colours across the keep
+    ctx.fillStyle = f.primary;
+    ctx.fillRect(-W * 0.18, -H + 14, W * 0.36, 5);
+
+    // emplaced guns along the wall
+    const n = roster.length;
+    roster.forEach((id, i) => {
+      const w = WEAPONS[id];
+      if (!w) return;
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const my = -26 - t * (H * 0.72);
+      const mx = (-W / 2 + 10) * 1;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.scale(-1, 1);
+      ctx.rotate(-pl.barrel * Math.PI / 180);
+      ctx.translate(-(pl.recoil || 0) * 5, 0);
+      ctx.fillStyle = '#3f444d';
+      ctx.beginPath(); ctx.arc(0, 0, 6, 0, 6.283); ctx.fill();
+      ctx.fillStyle = '#6d747f';
+      rr(ctx, 2, -3.6, 24, 7.2, 2); ctx.fill();
+      ctx.fillStyle = dead ? '#3a3f47' : w.tracer;
+      rr(ctx, 23, -4.4, 4, 8.8, 1.5); ctx.fill();
+      ctx.restore();
+    });
+
+    if (dead) {
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#1d1a19'; ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-W * 0.3, -H * 0.5); ctx.lineTo(-W * 0.05, -H * 0.14);
+      ctx.moveTo(W * 0.12, -H * 0.62); ctx.lineTo(W * 0.34, -H * 0.3);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (!dead) {
+      const bw = 130, bh = 8, by = pl.y - H - 34;
+      ctx.save();
+      ctx.fillStyle = 'rgba(10,7,6,.8)';
+      rr(ctx, pl.x - bw / 2, by, bw, bh, 3); ctx.fill();
+      const frac = pl.hp / pl.maxHp;
+      ctx.fillStyle = frac > 0.5 ? f.light : frac > 0.25 ? '#f0b04a' : '#e2634a';
+      rr(ctx, pl.x - bw / 2 + 1, by + 1, (bw - 2) * frac, bh - 2, 2); ctx.fill();
+      ctx.fillStyle = '#ffe0a0';
+      ctx.font = 'bold 10px "Trebuchet MS", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`FORTRESS · ${Math.ceil(pl.hp)}`, pl.x, by - 4);
+      ctx.restore();
+    }
+  }
+
   function platform(ctx, pl, game, isPlayer) {
     if (!pl) return;
+    if (pl.fortress) return fortress(ctx, pl, game);
     const f = pl.faction;
     const dead = pl.hp <= 0;
     const x = pl.x, y = pl.y;

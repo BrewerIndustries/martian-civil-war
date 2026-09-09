@@ -128,6 +128,61 @@ const UI = (() => {
       : 'Lay the guns';
   }
 
+  /* ---------- keyboard cursor ----------
+     One shared highlight that whatever overlay is open hands its items to, so
+     arrows move and Enter takes. Everything interactive is already a button
+     with an onclick, so activating is just a click() — no parallel code path
+     that can drift from what the mouse does. */
+
+  const nav = { items: [], index: 0 };
+
+  function navSet(selector) {
+    nav.items = [...document.querySelectorAll(selector)]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+    nav.index = Math.min(nav.index, Math.max(0, nav.items.length - 1));
+    navPaint();
+  }
+  function navClear() {
+    document.querySelectorAll('.kb-focus').forEach((el) => el.classList.remove('kb-focus'));
+    nav.items = [];
+  }
+  function navPaint() {
+    document.querySelectorAll('.kb-focus').forEach((el) => el.classList.remove('kb-focus'));
+    const el = nav.items[nav.index];
+    if (el) { el.classList.add('kb-focus'); el.scrollIntoView({ block: 'nearest' }); }
+  }
+  function navMove(d) {
+    if (!nav.items.length) return;
+    nav.index = (nav.index + d + nav.items.length) % nav.items.length;
+    navPaint();
+  }
+  // Rows are laid out in a responsive grid, so "down" means however many
+  // columns actually fit right now, not a number hard-coded here.
+  function navColumns() {
+    if (nav.items.length < 2) return 1;
+    const top = nav.items[0].getBoundingClientRect().top;
+    let cols = 0;
+    for (const el of nav.items) {
+      if (Math.abs(el.getBoundingClientRect().top - top) > 4) break;
+      cols++;
+    }
+    return Math.max(1, cols);
+  }
+  function navActivate() {
+    const el = nav.items[nav.index];
+    if (el) el.click();
+  }
+
+  function refreshNav() {
+    if (!$('help').classList.contains('hidden')) return navSet('#help button');
+    if (!$('arming').classList.contains('hidden')) return navSet('.arm-card');
+    if (!$('armory').classList.contains('hidden')) return navSet('.shop-card button:not(:disabled)');
+    if (!$('levels').classList.contains('hidden')) return navSet('.level-card:not(.locked)');
+    if (!$('result').classList.contains('hidden')) return navSet('#result .panel-actions button');
+    if (!$('title').classList.contains('hidden')) return navSet('.faction-card');
+    navClear();
+  }
+
   /* ---------- arming the volley ----------
      A deliberate step before the shot rather than a fiddle in the HUD: you
      decide what the platform powers this turn, then you aim. It opens itself
@@ -160,7 +215,7 @@ const UI = (() => {
           `<em>${w.damage} dmg${w.salvo ? ` ×${w.salvo.count}` : ''} · ${w.blast} blast · ${w.dig} dig</em>` +
         `</span>` +
         `<span class="arm-fp">${w.firepower}<small>fp</small></span>`;
-      el.onclick = () => { game.toggleMount(id); renderArming(); };
+      el.onclick = () => { game.toggleMount(id); renderArming(); refreshNav(); };
       grid.appendChild(el);
     });
 
@@ -175,7 +230,10 @@ const UI = (() => {
     if (!game.battle || game.state === 'over') return;
     renderArming();
     show('arming');
+    nav.index = 0;
+    refreshNav();
   }
+  function showHelp() { show('help'); refreshNav(); }
 
   /* ---------- armory ---------- */
 
@@ -334,20 +392,26 @@ const UI = (() => {
     $('map-credits').textContent = fmt(progress.credits);
   }
 
-  function showLevels() { renderGrid(); show('levels'); }
-  function showArmory() { renderShop(); show('armory'); }
+  function showLevels() { renderGrid(); show('levels'); nav.index = 0; refreshNav(); }
+  function showArmory() { renderShop(); show('armory'); nav.index = 0; refreshNav(); }
 
   const show = (id) => { $(id).classList.remove('hidden'); if (game) game.paused = true; };
+  const anyOpen = () =>
+    ['result', 'levels', 'title', 'armory', 'arming', 'help']
+      .some((k) => !$(k).classList.contains('hidden'));
+  const topOverlay = () =>
+    ['help', 'arming', 'armory', 'result', 'levels', 'title']
+      .find((k) => !$(k).classList.contains('hidden'));
   const hide = (id) => {
     $(id).classList.add('hidden');
-    const open = ['result', 'levels', 'title', 'armory', 'arming'].some((k) => !$(k).classList.contains('hidden'));
-    if (game && !open) game.paused = false;
+    if (game && !anyOpen()) game.paused = false;
+    refreshNav();
   };
 
   /* ---------- flow ---------- */
 
   function start(index) {
-    ['title', 'result', 'levels', 'armory', 'arming'].forEach(hide);
+    ['title', 'result', 'levels', 'armory', 'arming', 'help'].forEach(hide);
     game.setLoadout(progress.owned);
     game.setModules(progress.modules);
     game.load(index);
@@ -396,6 +460,9 @@ const UI = (() => {
 
     $('btn-menu').onclick = () => { Sfx.click(); showLevels(); };
     $('btn-arm').onclick = () => { Sfx.click(); showArming(); };
+    $('btn-keys').onclick = () => { Sfx.click(); showHelp(); };
+    $('btn-close-help').onclick = () => { Sfx.click(); hide('help'); };
+    $('btn-close-help-2').onclick = () => { Sfx.click(); hide('help'); };
     $('btn-ready').onclick = () => { Sfx.click(); hide('arming'); game.beginAiming(); };
     $('btn-close-arming').onclick = () => { Sfx.click(); hide('arming'); game.beginAiming(); };
     $('btn-fire').onclick = () => { Sfx.click(); game.fireAll(); };
@@ -423,11 +490,14 @@ const UI = (() => {
     };
 
     renderGrid();
+    refreshNav();
     return {
       hud, showResult, showLevels, showArmory, showArming, renderArming, onTurnStart, start, hide,
       ownedWeapons: () => progress.owned,
-      isOverlayOpen: () =>
-        ['result', 'levels', 'title', 'armory', 'arming'].some((k) => !$(k).classList.contains('hidden')),
+      isOverlayOpen: anyOpen,
+      topOverlay,
+      showHelp,
+      nav: { move: navMove, activate: navActivate, columns: navColumns, refresh: refreshNav },
     };
   }
 

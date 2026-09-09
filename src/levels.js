@@ -214,9 +214,9 @@ const MODULES = {
 
   // --- drive ---
   reactor: { kind: 'engine', icon: '⌬', name: 'Reactor Uprate', cost: 12000, order: 16,
-             fuel: 60, blurb: 'More power to the drives.' },
+             fuel: 170, blurb: 'More power to the drives. Far more ground per turn.' },
   treads:  { kind: 'engine', icon: '⚙', name: 'Heavy Treads', cost: 20000, order: 17,
-             climb: 9, driveSpeed: 0.7, blurb: 'Climbs steeper ground and moves quicker over it.' },
+             climb: 11, driveSpeed: 1.1, blurb: 'Climbs steeper ground and moves quicker over it.' },
   dampers: { kind: 'engine', icon: '⩌', name: 'Inertial Dampers', cost: 16000, order: 18,
              fallReduce: 0.65, blurb: 'Takes far less damage when the ground gives way under you.' },
 };
@@ -237,14 +237,20 @@ const weaponList = () => Object.keys(WEAPONS).sort((a, b) => WEAPONS[a].order - 
 const PLATFORM = {
   storeys: 3,      // it is a building on wheels, not a tank
   hp: 100, w: 96, h: 112,   // hit box must cover the whole structure
+  // a fortress is dug in: far wider, so far easier to hit
+  fortW: 168, fortH: 150,
   /* Firepower is the per-volley budget. You own every mount you have bought,
      but the platform can only power so many of them at once, so each turn is a
      choice about what to bring to bear rather than "fire everything". This is
      what keeps a big arsenal interesting instead of merely additive. */
   firepower: 56,
-  fuel: 80,        // drive allowance, refilled at the start of each of your turns
-  climb: 13,       // tallest step the tracks can take, in px
-  speed: 1.5,      // px per physics step
+  /* Drive allowance, refilled each turn. Sized so a turn's fuel is a real
+     repositioning move: at 80 fuel the platform travelled 80px, less than its
+     own width on an 1800px field, which read as "driving is broken" rather
+     than "driving is limited". */
+  fuel: 260,
+  climb: 15,       // tallest step the tracks can take, in px
+  speed: 2.4,      // px per physics step
 };
 
 /* ---------- the campaign ----------
@@ -277,7 +283,19 @@ const BATTLES = [
   { name: 'Deep Cut',           profile: 'canyon',  seed: 1188, amplitude: 380, skill: 0.79, wind: 0.09,
     tip: 'Long, low and exposed. Whoever ranges first wins.' },
   { name: "Warlord's Redoubt",  profile: 'ridge',   seed: 1291, amplitude: 430, skill: 0.85, wind: 0.10,
-    tip: 'Their best gunner, behind their best ground. Bring everything.' },
+    tip: 'Their best gunner, behind their best ground.' },
+  { name: 'The Salt Flats',     profile: 'plateau', seed: 1402, amplitude: 300, skill: 0.80, wind: 0.14,
+    tip: 'Open ground and a hard wind. Nowhere to hide on either side.' },
+  { name: 'Shatterfield',       profile: 'spires',  seed: 1519, amplitude: 400, skill: 0.82, wind: 0.11,
+    tip: 'Broken rock all the way across. Make your own line through it.' },
+  { name: 'The Undercut',       profile: 'canyon',  seed: 1633, amplitude: 420, skill: 0.84, wind: 0.08,
+    tip: 'Dig the ground out from under them and let the drop do the work.' },
+  { name: 'Storm Basin',        profile: 'crater',  seed: 1744, amplitude: 340, skill: 0.86, wind: 0.18,
+    tip: 'The worst gale on Barsoom, in a bowl. Range them every single turn.' },
+  { name: 'The Long Wall',      profile: 'ridge',   seed: 1858, amplitude: 470, skill: 0.88, wind: 0.09,
+    tip: 'Higher than anything you have shot over. Consider going through.' },
+  { name: 'Last Ground',        profile: 'twin',    seed: 1966, amplitude: 450, skill: 0.90, wind: 0.12,
+    tip: 'Whatever is left of both houses, on the last ridge either of them holds.' },
 ];
 
 /* Both platforms field the same hull in a given battle: this is a duel, and an
@@ -294,23 +312,46 @@ const enemyRoster = (i) => {
   if (i < 4) return ['laser', 'scatter'];
   if (i < 6) return ['laser', 'scatter', 'fusion'];
   if (i < 8) return ['laser', 'volley', 'fusion', 'rail'];
-  if (i < 10) return ['laser', 'volley', 'fusion', 'rail', 'ion'];
-  return ['laser', 'volley', 'fusion', 'rail', 'seeker', 'barrage'];
+  if (i < 10) return ['laser', 'volley', 'fusion', 'flak', 'rail'];
+  if (i < 13) return ['laser', 'volley', 'fusion', 'rail', 'seeker', 'barrage'];
+  if (i < 16) return ['laser', 'gauss', 'fusion', 'buster', 'seeker', 'barrage'];
+  return ['laser', 'gauss', 'howitzer', 'buster', 'seeker', 'barrage', 'mirv'];
 };
 
+/* Fortresses. Every sixth battle the enemy is not a platform at all but a
+   gun house dug into the ridge: far more hull, more mounts firing at once, and
+   it cannot be driven off its ground — but it is a much wider target, and the
+   ground under it can still be taken away. */
+const FORTRESS_AT = { 5: 'The Iron Bastion', 11: 'The Warlord\'s Citadel', 17: 'Fortress Barsoom' };
+
 BATTLES.forEach((b, i) => {
-  b.hp = 130 + i * 34;
-  b.enemyHp = b.hp;
-  b.playerHp = b.hp;
+  const fort = FORTRESS_AT[i];
+  if (fort) {
+    b.name = fort;
+    b.boss = true;
+    b.tip = 'A fortress, not a platform. It cannot run — but it can take a great deal more than one.';
+  }
+
+  /* A fortress already brings far more hull and a heavier volley. Stacking
+     that behind the campaign's tallest ridge made battle 12 unreachable —
+     0/3 with a loadout that cleared its neighbours — so boss ground is a
+     little kinder than the battles either side of it. */
+  if (b.boss) b.amplitude = Math.round(b.amplitude * 0.78);
+
+  const base = 130 + i * 30;
+  b.playerHp = base;                                   // yours is never inflated
+  b.enemyHp = b.boss ? Math.round(base * 1.7) : base;
+  b.hp = base;
   b.playerX = 210;
   b.enemyX = 1590;
-  b.enemyMounts = enemyRoster(i);
-  /* Grows slowly on purpose. The player's budget only rises when they BUY a
-     power module, so an enemy budget that climbed every battle left the
-     mid-campaign hopelessly out-volleyed — battle 6 was unwinnable with a
-     sensible three-mount loadout. This tracks a player who has bought one
-     power module by the middle of the campaign. */
-  b.enemyFirepower = 38 + i * 4.5;
+
+  // a fortress fields the roster of a battle three further on, and powers more
+  // of it at once, because standing still is the only advantage it gives up
+  b.enemyMounts = enemyRoster(b.boss ? Math.min(BATTLES.length - 1, i + 2) : i);
+  /* Three multipliers stacked (hull, firepower and a roster from further
+     up the campaign) made the mid bosses unwinnable at 0/3 with a plausible
+     loadout, while the finale was fine. Each one is gentler now. */
+  b.enemyFirepower = Math.round((38 + i * 4.5) * (b.boss ? 1.2 : 1));
 });
 
 // Kept for the campaign map and result screen, which speak in "assaults".

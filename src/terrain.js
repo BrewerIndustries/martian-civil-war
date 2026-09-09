@@ -73,7 +73,7 @@ class Terrain {
 
   /* Build the battlefield. `flatten` lists x positions that need a level pad
      (the two platforms), so nobody spawns on a 40° slope. */
-  generate({ profile = 'ridge', seed = 1, amplitude = 300, base = 780, flatten = [] } = {}) {
+  generate({ profile = 'ridge', seed = 1, amplitude = 300, base = 780, flatten = [], wideFlatten = null } = {}) {
     const { w, h, mask } = this;
     const rnd = mulberry32(seed);
     const fn = Terrain.PROFILES[profile] || Terrain.PROFILES.ridge;
@@ -92,7 +92,7 @@ class Terrain {
 
     // level pads so platforms sit flat and level
     for (const fx of flatten) {
-      const pad = 46;
+      const pad = (wideFlatten !== null && Math.abs(fx - wideFlatten) < 1) ? 110 : 46;
       const lo = Math.max(0, Math.round(fx - pad));
       const hi = Math.min(w - 1, Math.round(fx + pad));
       let sum = 0;

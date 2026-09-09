@@ -246,12 +246,13 @@ class Game {
     this.terrain.generate({
       profile: spec.profile, seed: spec.seed, amplitude: spec.amplitude,
       base: WORLD.baseY, flatten: [spec.playerX, spec.enemyX],
+      wideFlatten: spec.boss ? spec.enemyX : null,
     });
 
     this.foeMounts = (spec.enemyMounts || ['laser']).slice();
     this._refitArmed();
     this.player = this._makePlatform(spec.playerX, this.faction, spec.playerHp + this.mods.hull, 1);
-    this.foe = this._makePlatform(spec.enemyX, otherFaction(this.faction), spec.enemyHp, -1);
+    this.foe = this._makePlatform(spec.enemyX, otherFaction(this.faction), spec.enemyHp, -1, !!spec.boss);
 
     this.shells.length = 0;
     this.particles.length = 0;
@@ -275,11 +276,14 @@ class Game {
 
   restart() { this.load(this.battleIndex); }
 
-  _makePlatform(x, factionId, hp, facing) {
+  _makePlatform(x, factionId, hp, facing, fortress = false) {
     return {
       x, y: this.terrain.topAt(x), facing,
       faction: FACTIONS[factionId], hp, maxHp: hp,
       recoil: 0, barrel: facing > 0 ? 42 : 138,
+      fortress,
+      w: fortress ? PLATFORM.fortW : PLATFORM.w,
+      h: fortress ? PLATFORM.fortH : PLATFORM.h,
     };
   }
 
@@ -630,7 +634,7 @@ class Game {
       for (const pl of [this.player, this.foe]) {
         if (!pl || pl.hp <= 0) continue;
         if (pl === s.owner && s.life < 9) continue;      // don't hit your own building
-        if (Math.abs(s.x - pl.x) < PLATFORM.w / 2 && s.y > pl.y - PLATFORM.h && s.y < pl.y + 8) {
+        if (Math.abs(s.x - pl.x) < (pl.w || PLATFORM.w) / 2 && s.y > pl.y - (pl.h || PLATFORM.h) && s.y < pl.y + 8) {
           return { type: 'platform', platform: pl };
         }
       }
@@ -769,7 +773,7 @@ class Game {
     // Splash damage: full at the centre, tapering to nothing at blast radius.
     for (const pl of [this.player, this.foe]) {
       if (!pl || pl.hp <= 0) continue;
-      const d = Math.hypot(pl.x - x, (pl.y - PLATFORM.h / 2) - y);
+      const d = Math.hypot(pl.x - x, (pl.y - (pl.h || PLATFORM.h) / 2) - y);
       if (d > blast && pl !== hitPlatform) continue;
       const direct = pl === hitPlatform;
       const falloff = direct ? 1 : clamp(1 - d / blast, 0, 1);
@@ -817,7 +821,7 @@ class Game {
     for (const pl of [this.player, this.foe]) {
       if (!pl || pl.hp <= 0) continue;
       let fell = 0;
-      while (pl.y < WORLD.h - 2 && !this.terrain.supported(pl.x, pl.y, PLATFORM.w / 2 - 6, 3)) {
+      while (pl.y < WORLD.h - 2 && !this.terrain.supported(pl.x, pl.y, (pl.w || PLATFORM.w) / 2 - 6, 3)) {
         pl.y += 2; fell += 2;
         if (fell > 460) break;
       }
