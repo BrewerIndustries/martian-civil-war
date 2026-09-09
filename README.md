@@ -242,11 +242,14 @@ Things that are the way they are on purpose:
   abilities, so a human plays better than these numbers.
 - **Fixed 60 Hz accumulator**, so the game plays at the same speed on a 120 Hz
   display.
-- **The canvas freezes while an overlay is open.** Overlays sit on a
-  `backdrop-filter` blur; re-blurring a canvas that is still animating
-  underneath makes the panel shimmer and flash every frame. Once an overlay is
-  up the game paints one last frame and then holds still, giving the blur a
-  static backdrop. A resize still forces a repaint.
+- **No `backdrop-filter` anywhere.** Frosted panels flashed twice, for two
+  different reasons. HUD chrome sits over a canvas that never stops animating,
+  so its blur re-sampled every frame; and panel cards lift on hover, and
+  transforming a child inside a backdrop-filtered container makes the browser
+  re-composite the blur, which reads as a glitch. Solid backgrounds throughout
+  instead. The canvas still freezes while an overlay is open (one final frame,
+  then it holds still, with a resize forcing a repaint) because that is worth
+  doing on its own.
 - **The HUD only rebuilds when it changes.** It is emitted on every drag frame,
   and tearing down the weapon buttons 60 times a second restarted their CSS
   transitions and made them flicker.

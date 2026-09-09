@@ -305,8 +305,13 @@ class Game {
     const move = (e) => { if (!this.dragging) return; e.preventDefault(); this._drag(pos(e)); };
     const up = (e) => {
       if (!this.dragging) return;
-      e.preventDefault(); this.dragging = false;
-      if (this.aimPower > 0.06) this.fire();
+      e.preventDefault();
+      this.dragging = false;
+      /* Releasing lays THIS gun and nothing more. It used to fire, which was
+         right when a turn was a single shot — but now the volley only goes
+         when the player says so, via the fire bar, F, or Enter on the last
+         mount. */
+      this._emitHud();
     };
     c.addEventListener('mousedown', down);
     window.addEventListener('mousemove', move);
@@ -391,8 +396,11 @@ class Game {
      scatters them across the target. That is the point of a rolling fortress:
      you do not snipe, you saturate. Early on, with one mount, it is a precise
      duel; a full arsenal turns it into a barrage. */
-  fire(owner = this.foe, angle = 42, power = 0.7, mounts = null) {
-    if (owner === this.player) return this.fireAll();
+  /* The enemy's volley. The player fires through fireAll(), and a call with
+     no owner routes there too — defaulting this to the foe is exactly how the
+     drag-release bug shipped. */
+  fire(owner, angle = 42, power = 0.7, mounts = null) {
+    if (!owner || owner === this.player) return this.fireAll();
     const roster = mounts || this.rosterFor(owner);
     if (!roster.length) return;
 
@@ -932,7 +940,10 @@ class Game {
           this.popups.push({ x: this.player.x, y: this.player.y - 120, text: `+${healed}`,
                              color: '#9fd93a', life: 1.1, maxLife: 1.1, vy: -0.9 });
         }
-        this.state = 'aim';
+        // Every turn opens with the arming panel, not just the first.
+        this.state = 'arming';
+        this.aimIndex = 0;
+        if (this.hooks.onTurnStart) this.hooks.onTurnStart();
       }
       this._emitHud();
       return;
