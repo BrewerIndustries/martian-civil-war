@@ -5,7 +5,8 @@ const UI = (() => {
   const $ = (id) => document.getElementById(id);
 
   let game = null;
-  let progress = { stars: {}, best: {}, faction: 'red', credits: 0, owned: [STARTING_WEAPON] };
+  let progress = { stars: {}, best: {}, faction: 'red', credits: 0,
+                   owned: [STARTING_WEAPON], modules: [] };
 
   function loadProgress() {
     try {
@@ -19,6 +20,7 @@ const UI = (() => {
           credits: Number(p.credits) || 0,
           owned: Array.isArray(p.owned) && p.owned.length
             ? p.owned.filter((w) => WEAPONS[w]) : [STARTING_WEAPON],
+          modules: Array.isArray(p.modules) ? p.modules.filter((m) => MODULES[m]) : [],
         };
         if (!progress.owned.includes(STARTING_WEAPON)) progress.owned.push(STARTING_WEAPON);
       }
@@ -56,22 +58,21 @@ const UI = (() => {
     $('hud-score').textContent = fmt(s.score);
     $('hud-credits').textContent = fmt(progress.credits);
 
-    // Mounted weapons. The HUD is emitted on every drag frame, so only rebuild
-    // this when it actually changed — tearing down and recreating the buttons
-    // 60 times a second restarts their CSS transitions and makes them flicker.
+    /* The arsenal, not a selection: every mount fires each turn, so this is a
+       readout of what the platform will put downrange. Rebuilt only when it
+       changes — the HUD is emitted on every drag frame, and recreating these
+       nodes 60 times a second restarts their transitions and makes them
+       flicker. */
     const rack = $('weapon-rack');
-    const yours = weaponList().filter((w) => s.owned.includes(w));
-    const sig = yours.join(',') + '|' + s.weapon + '|' + (s.canAbility ? 1 : 0);
+    const sig = s.owned.join(',') + '|' + (s.modules || []).join(',') + '|' + (s.canAbility ? 1 : 0);
     if (sig !== hud._sig) {
       hud._sig = sig;
-      rack.innerHTML = yours.map((w, i) => {
-        const cls = w === s.weapon ? 'ammo current' : 'ammo';
-        return `<button class="${cls}" data-weapon="${w}" title="${WEAPONS[w].name} (${i + 1})">${WEAPONS[w].icon}</button>`;
-      }).join('') +
-        `<span class="ammo-name">${s.canAbility ? 'Space!' : WEAPONS[s.weapon].name}</span>`;
-      rack.querySelectorAll('[data-weapon]').forEach((b) => {
-        b.onclick = () => game.selectWeapon(b.dataset.weapon);
-      });
+      const mounts = s.owned.map((w) =>
+        `<span class="ammo current" title="${WEAPONS[w].name} — ${WEAPONS[w].behaviour}">${WEAPONS[w].icon}</span>`).join('');
+      const fitted = (s.modules || []).map((m) =>
+        `<span class="ammo module" title="${MODULES[m].name} — ${MODULES[m].blurb}">${MODULES[m].icon}</span>`).join('');
+      rack.innerHTML = mounts + (fitted ? `<span class="rack-split"></span>${fitted}` : '') +
+        `<span class="ammo-name">${s.canAbility ? 'Space!' : s.owned.length + ' mounts'}</span>`;
     }
 
     $('ro-angle').textContent = `${Math.round(s.angle)}°`;
@@ -102,28 +103,71 @@ const UI = (() => {
     $('armory-credits').textContent = fmt(progress.credits);
     const shop = $('weapon-shop');
     shop.innerHTML = '';
-    weaponList().forEach((id) => {
-      const w = WEAPONS[id];
-      const owned = progress.owned.includes(id);
-      const affordable = progress.credits >= w.cost;
-      const card = document.createElement('div');
-      card.className = 'shop-card' + (owned ? ' owned' : affordable ? '' : ' locked');
-      card.innerHTML =
-        `<span class="shop-icon">${w.icon}</span>` +
-        `<div class="shop-body">` +
-          `<span class="shop-name">${w.name}</span>` +
-          `<span class="shop-blurb">${w.blurb}</span>` +
-          `<span class="shop-stats"><em>${w.behaviour}</em> · ${w.damage} dmg` +
-            `${w.salvo ? ` ×${w.salvo.count}` : ''} · ${w.blast} blast · ${w.dig} dig</span>` +
-        `</div>`;
-      const btn = document.createElement('button');
-      btn.className = 'btn tiny ' + (owned ? 'ghost' : affordable ? 'primary' : 'ghost');
-      btn.textContent = owned ? 'Mounted' : `${fmt(w.cost)} cr`;
-      btn.disabled = owned || !affordable;
-      btn.onclick = () => buy(id);
-      card.appendChild(btn);
-      shop.appendChild(card);
-    });
+
+    const section = (label, note) => {
+      const h = document.createElement('div');
+      h.className = 'shop-section';
+      h.innerHTML = `<span>${label}</span><i>${note}</i>`;
+      shop.appendChild(h);
+    };
+
+    section('Mounts', 'every mount fires each turn');
+    weaponList().forEach((id) => card(shop, id, WEAPONS[id], progress.owned.includes(id), buy));
+
+    for (const kind of MODULE_KINDS) {
+      const ids = moduleList().filter((m) => MODULES[m].kind === kind.id);
+      if (!ids.length) continue;
+      section(kind.label, 'fitted permanently');
+      ids.forEach((id) => card(shop, id, MODULES[id], progress.modules.includes(id), buyModule));
+    }
+  }
+
+  function statLine(spec) {
+    if (spec.kind) {
+      const bits = [];
+      if (spec.hull) bits.push(`+${spec.hull} hull`);
+      if (spec.damageReduce) bits.push(`−${Math.round(spec.damageReduce * 100)}% damage taken`);
+      if (spec.splashReduce) bits.push(`−${Math.round(spec.splashReduce * 100)}% splash`);
+      if (spec.regen) bits.push(`+${spec.regen} hull / turn`);
+      if (spec.fuel) bits.push(`+${spec.fuel} fuel`);
+      if (spec.climb) bits.push(`+${spec.climb} climb`);
+      if (spec.fallReduce) bits.push(`−${Math.round(spec.fallReduce * 100)}% fall damage`);
+      return bits.join(' · ');
+    }
+    return `<em>${spec.behaviour}</em> · ${spec.damage} dmg` +
+      `${spec.salvo ? ` ×${spec.salvo.count}` : ''} · ${spec.blast} blast · ${spec.dig} dig`;
+  }
+
+  function card(shop, id, spec, owned, onBuy) {
+    const affordable = progress.credits >= spec.cost;
+    const el = document.createElement('div');
+    el.className = 'shop-card' + (owned ? ' owned' : affordable ? '' : ' locked');
+    el.innerHTML =
+      `<span class="shop-icon">${spec.icon}</span>` +
+      `<div class="shop-body">` +
+        `<span class="shop-name">${spec.name}</span>` +
+        `<span class="shop-blurb">${spec.blurb}</span>` +
+        `<span class="shop-stats">${statLine(spec)}</span>` +
+      `</div>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn tiny ' + (owned ? 'ghost' : affordable ? 'primary' : 'ghost');
+    btn.textContent = owned ? 'Fitted' : `${fmt(spec.cost)} cr`;
+    btn.disabled = owned || !affordable;
+    btn.onclick = () => onBuy(id);
+    el.appendChild(btn);
+    shop.appendChild(el);
+  }
+
+  function buyModule(id) {
+    const m = MODULES[id];
+    if (progress.modules.includes(id) || progress.credits < m.cost) return;
+    progress.credits -= m.cost;
+    progress.modules.push(id);
+    saveProgress();
+    game.setModules(progress.modules);
+    Sfx.star(1);
+    renderShop();
+    $('hud-credits').textContent = fmt(progress.credits);
   }
 
   function buy(id) {
@@ -225,6 +269,7 @@ const UI = (() => {
   function start(index) {
     ['title', 'result', 'levels', 'armory'].forEach(hide);
     game.setLoadout(progress.owned);
+    game.setModules(progress.modules);
     game.load(index);
     const hint = $('hint');
     hint.textContent = BATTLES[index].tip || 'Drag back from your platform to aim & fire';
@@ -254,6 +299,7 @@ const UI = (() => {
     ['build-title', 'build-map'].forEach((id) => { if ($(id)) $(id).textContent = stamp; });
     applyFaction(progress.faction);
     game.setLoadout(progress.owned);
+    game.setModules(progress.modules);
 
     document.querySelectorAll('.faction-card').forEach((card) => {
       card.onclick = () => {
@@ -277,10 +323,12 @@ const UI = (() => {
     $('btn-switch').onclick = () => { Sfx.click(); hide('levels'); show('title'); };
     $('btn-mute').onclick = (e) => { e.currentTarget.textContent = Sfx.toggleMute() ? '🔇' : '🔊'; };
     $('btn-wipe').onclick = () => {
-      if (!confirm('Reset stars, scores, credits and every mount?')) return;
-      progress = { stars: {}, best: {}, faction: progress.faction, credits: 0, owned: [STARTING_WEAPON] };
+      if (!confirm('Reset stars, scores, credits, mounts and modules?')) return;
+      progress = { stars: {}, best: {}, faction: progress.faction, credits: 0,
+                   owned: [STARTING_WEAPON], modules: [] };
       saveProgress();
       game.setLoadout(progress.owned);
+      game.setModules(progress.modules);
       renderGrid();
     };
 

@@ -29,7 +29,8 @@ class Game {
     this.faction = 'red';
 
     this.owned = [STARTING_WEAPON];
-    this.weapon = STARTING_WEAPON;
+    this.modules = [];
+    this.mods = this._rollUpModules();
     this.aimAngle = 42;        // degrees above horizontal
     this.aimPower = 0.7;       // 0..1
     this.fuel = PLATFORM.fuel;
@@ -50,17 +51,45 @@ class Game {
   get enemyHouse() { return FACTIONS[otherFaction(this.faction)]; }
 
   setLoadout(owned) {
-    this.owned = owned && owned.length ? owned.slice() : [STARTING_WEAPON];
-    if (!this.owned.includes(this.weapon)) this.weapon = this.owned[0];
+    // Ordered so the broadside always launches in the same sequence.
+    const list = owned && owned.length ? owned.slice() : [STARTING_WEAPON];
+    this.owned = weaponList().filter((w) => list.includes(w));
+    if (!this.owned.length) this.owned = [STARTING_WEAPON];
     this._emitHud();
   }
 
-  selectWeapon(id) {
-    if (!this.owned.includes(id) || this.state !== 'aim') return;
-    this.weapon = id;
-    Sfx.click();
+  // Kept as a no-op: there is no weapon selection any more, the platform
+  // fires everything it has mounted.
+  selectWeapon() {}
+
+  setModules(ids) {
+    this.modules = (ids || []).filter((m) => MODULES[m]);
+    this.mods = this._rollUpModules();
+    if (this.player) {
+      // refit mid-campaign: keep damage taken, raise the ceiling
+      const taken = this.player.maxHp - this.player.hp;
+      this.player.maxHp = this.battle.playerHp + this.mods.hull;
+      this.player.hp = Math.max(1, this.player.maxHp - taken);
+    }
     this._emitHud();
   }
+
+  _rollUpModules() {
+    const m = { hull: 0, damageReduce: 0, splashReduce: 0, regen: 0,
+                fuel: 0, climb: 0, driveSpeed: 0, fallReduce: 0 };
+    for (const id of this.modules || []) {
+      const mod = MODULES[id];
+      if (!mod) continue;
+      for (const k of Object.keys(m)) if (mod[k]) m[k] += mod[k];
+    }
+    // fractions stack additively but must never reach total immunity
+    m.damageReduce = Math.min(0.6, m.damageReduce);
+    m.splashReduce = Math.min(0.75, m.splashReduce);
+    m.fallReduce = Math.min(0.85, m.fallReduce);
+    return m;
+  }
+
+  get maxFuel() { return PLATFORM.fuel + this.mods.fuel; }
 
   /* ---------- viewport ---------- */
 
@@ -95,7 +124,8 @@ class Game {
       base: WORLD.baseY, flatten: [spec.playerX, spec.enemyX],
     });
 
-    this.player = this._makePlatform(spec.playerX, this.faction, spec.playerHp, 1);
+    this.foeMounts = (spec.enemyMounts || ['laser']).slice();
+    this.player = this._makePlatform(spec.playerX, this.faction, spec.playerHp + this.mods.hull, 1);
     this.foe = this._makePlatform(spec.enemyX, otherFaction(this.faction), spec.enemyHp, -1);
 
     this.shells.length = 0;
@@ -109,7 +139,7 @@ class Game {
     this.lastShooter = null;
     this.aimAngle = 42;
     this.aimPower = 0.7;
-    this.fuel = PLATFORM.fuel;
+    this.fuel = this.maxFuel;
     this.driveDir = 0;
     this.state = 'aim';
     this.paused = false;
@@ -186,12 +216,12 @@ class Game {
   _drive() {
     const pl = this.player;
     if (!pl || pl.hp <= 0 || this.fuel <= 0 || !this.driveDir) return;
-    const step = Math.min(PLATFORM.speed, this.fuel);
+    const step = Math.min(PLATFORM.speed + this.mods.driveSpeed, this.fuel);
     const nx = clamp(pl.x + this.driveDir * step, 46, WORLD.w - 46);
     if (nx === pl.x) return;
 
     // a wall at head height is not climbable
-    const ceiling = pl.y - PLATFORM.climb;
+    const ceiling = pl.y - (PLATFORM.climb + this.mods.climb);
     if (this.terrain.solidAt(nx, ceiling)) return;
 
     const ny = this.terrain.topAt(nx, Math.max(0, ceiling));
@@ -221,26 +251,54 @@ class Game {
   muzzle(pl, angle) {
     const deg = angle !== undefined ? angle : (pl === this.player ? this.aimAngle : pl.barrel);
     const a = deg * Math.PI / 180;
+    // Guns sit up the face of the building, not on a turret at ground level.
     return {
-      x: pl.x + Math.cos(a) * 34 * pl.facing,
-      y: pl.y - 20 - Math.sin(a) * 34,
+      x: pl.x + (40 + Math.cos(a) * 22) * pl.facing,
+      y: pl.y - 74 - Math.sin(a) * 22,
     };
   }
 
   /* ---------- firing ---------- */
 
-  fire(owner = this.player, angle = this.aimAngle, power = this.aimPower, weaponId = this.weapon) {
+  /* A turn is a broadside, not a shot. Every mount on the platform fires on
+     the same firing solution — and because each flies differently (a lance is
+     dead straight, a mortar lobs, a rail spike shoots flat) the same solution
+     scatters them across the target. That is the point of a rolling fortress:
+     you do not snipe, you saturate. Early on, with one mount, it is a precise
+     duel; a full arsenal turns it into a barrage. */
+  fire(owner = this.player, angle = this.aimAngle, power = this.aimPower, mounts = null) {
     if (this.state !== 'aim' && owner === this.player) return;
+    const roster = mounts || this.rosterFor(owner);
+    if (!roster.length) return;
+
+    for (const id of roster) this._launch(owner, angle, power, id);
+
+    owner.recoil = 1;
+    this.lastShooter = owner;
+    this.abilityUsed = false;
+    this.state = 'flight';
+    this.shake = Math.min(this.shake + 4 + roster.length * 1.6, 20);
+    Sfx.launch();
+    const o = this.muzzle(owner, angle);
+    this._puff(o.x, o.y, 10 + roster.length * 3, '#e8c9a0');
+    this._emitHud();
+  }
+
+  rosterFor(owner) {
+    return owner === this.player ? this.owned : (this.foeMounts || ['laser']);
+  }
+
+  _launch(owner, angle, power, weaponId) {
     const w = WEAPONS[weaponId];
+    if (!w) return;
     const o = this.muzzle(owner, angle);
 
-    // An additive mount puts several shells up on one trigger pull: `spread`
-    // fans them by angle, `stagger` varies their charge so they walk out to
-    // different ranges rather than landing on top of one another.
+    // An additive mount puts several shells up on its own: `spread` fans them
+    // by angle, `stagger` varies their charge so they walk out.
     const salvo = w.salvo;
     const count = salvo ? salvo.count : 1;
     for (let k = 0; k < count; k++) {
-      const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;   // -1 .. 1
+      const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;
       const ang = (angle + t * (salvo ? salvo.spread : 0)) * Math.PI / 180;
       const pw = clamp(power + t * (salvo ? salvo.stagger : 0), 0.05, 1);
       const speed = pw * MAX_SPEED * w.speed;
@@ -251,35 +309,26 @@ class Game {
         weapon: weaponId, owner,
         bore: w.penetrate || 0, trail: [], life: 0, travelled: 0,
         shard: count > 1,
-        // Bursting exactly at the crest leaves the shards no time to diverge —
-        // measured a 49px spread, which reads as a single crater. Fire it part
-        // way up the climb instead, where the fan still has flight left to open.
         burstAt: w.autoAbility
           ? Math.max(4, Math.round(0.6 * (Math.abs(Math.sin(ang) * speed) / (G * (w.gravityScale ?? 1)))))
           : 0,
         age: 0,
       });
     }
-
-    owner.recoil = 1;
-    this.lastShooter = owner;
-    this.abilityUsed = false;
-    this.state = 'flight';
-    this.shake = Math.min(this.shake + 5, 14);
-    Sfx.launch();
-    this._puff(o.x, o.y, 12, '#e8c9a0');
-    this._emitHud();
   }
 
   useAbility() {
     if (this.state !== 'flight' || this.abilityUsed) return;
-    const mine = this.shells.filter((sh) => sh.owner === this.player);
+    const mine = this.shells.filter((sh) => sh.owner === this.player &&
+                                          WEAPONS[sh.weapon].ability && !sh.burst);
     if (!mine.length) return;
-    const w = WEAPONS[mine[0].weapon];
-    if (!w.ability) return;
     this.abilityUsed = true;
-    // a salvo triggers as one — every shell in the air answers the button
-    for (const s of mine) this._triggerAbility(s, w);
+    // The whole broadside answers one button: every shell in the air that has
+    // a trick performs it at once.
+    for (const s of mine) {
+      s.burst = true;
+      this._triggerAbility(s, WEAPONS[s.weapon]);
+    }
     this._emitHud();
   }
 
@@ -368,7 +417,7 @@ class Game {
 
       for (const pl of [this.player, this.foe]) {
         if (!pl || pl.hp <= 0) continue;
-        if (pl === s.owner && s.life < 6) continue;      // don't hit your own muzzle
+        if (pl === s.owner && s.life < 9) continue;      // don't hit your own building
         if (Math.abs(s.x - pl.x) < PLATFORM.w / 2 && s.y > pl.y - PLATFORM.h && s.y < pl.y + 8) {
           return { type: 'platform', platform: pl };
         }
@@ -421,10 +470,11 @@ class Game {
 
      If the arc meets ground before the apex, it stops there instead and says
      so — that is the "over the ridge or through it?" question, answered. */
-  aimPreview(angleOverride, powerOverride) {
+  aimPreview(angleOverride, powerOverride, weaponId) {
     const pl = this.player;
     if (!pl || pl.hp <= 0) return null;
-    const w = WEAPONS[this.weapon];
+    const w = WEAPONS[weaponId || this.owned[0]];
+    if (!w) return null;
     const angle = angleOverride === undefined ? this.aimAngle : angleOverride;
     const power = clamp(powerOverride === undefined ? this.aimPower : powerOverride, 0.02, 1);
     const a = angle * Math.PI / 180;
@@ -434,7 +484,7 @@ class Game {
     const ghost = {
       x: o.x, y: o.y,
       vx: Math.cos(a) * speed * pl.facing, vy: -Math.sin(a) * speed,
-      weapon: this.weapon, owner: pl, bore: w.penetrate || 0, life: 0, travelled: 0,
+      weapon: weaponId || this.owned[0], owner: pl, bore: w.penetrate || 0, life: 0, travelled: 0,
     };
 
     /* A direct-fire beam has no apex to stop at, and hiding its path would be
@@ -506,8 +556,14 @@ class Game {
       if (!pl || pl.hp <= 0) continue;
       const d = Math.hypot(pl.x - x, (pl.y - PLATFORM.h / 2) - y);
       if (d > blast && pl !== hitPlatform) continue;
-      const falloff = pl === hitPlatform ? 1 : clamp(1 - d / blast, 0, 1);
-      const dmg = Math.round(w.damage * (0.35 + 0.65 * falloff));
+      const direct = pl === hitPlatform;
+      const falloff = direct ? 1 : clamp(1 - d / blast, 0, 1);
+      let raw = w.damage * (0.35 + 0.65 * falloff);
+      if (pl === this.player) {
+        raw *= (1 - this.mods.damageReduce);
+        if (!direct) raw *= (1 - this.mods.splashReduce);   // baffles vent near misses
+      }
+      const dmg = Math.round(raw);
       if (dmg > 0) this._damage(pl, dmg, s.owner);
     }
   }
@@ -546,9 +602,10 @@ class Game {
         if (fell > 460) break;
       }
       if (fell > 26) {
-        const dmg = Math.min(38, Math.round(fell / 14));
+        let dmg = Math.min(38, Math.round(fell / 14));
+        if (pl === this.player) dmg = Math.round(dmg * (1 - this.mods.fallReduce));
         this.popups.push({ x: pl.x, y: pl.y - 60, text: 'FELL', color: '#ffb04a', life: 1, maxLife: 1, vy: -0.8 });
-        this._damage(pl, dmg, null);
+        if (dmg > 0) this._damage(pl, dmg, null);
         Sfx.thud(1);
         this._puff(pl.x, pl.y, 16, '#a8623c');
       }
@@ -565,7 +622,9 @@ class Game {
      hands: its shots land near you and miss, rather than landing nowhere. */
   _enemyShot() {
     const skill = this.battle.skill;
-    const weaponId = this._enemyWeapon();
+    // Range with one representative mount; the rest of the broadside follows
+    // the same solution and lands where its own ballistics take it.
+    const weaponId = this.foeMounts.includes('laser') ? 'laser' : this.foeMounts[0];
     const aimX = this.player.x, aimY = this.player.y - 14;
     const err = (ang, pw) => {
       const r = this.trace(this.foe, ang, pw, weaponId, 600);
@@ -596,17 +655,6 @@ class Game {
       angle: clamp(best.ang + (Math.random() * 2 - 1) * slop * 9, 5, 88),
       power: clamp(best.pw + (Math.random() * 2 - 1) * slop * 0.12, 0.2, 1),
     };
-  }
-
-  // The enemy fields heavier mounts as the campaign goes on.
-  _enemyWeapon() {
-    const tier = this.battleIndex;
-    const pool = ['laser'];
-    if (tier >= 3) pool.push('scatter');
-    if (tier >= 6) pool.push('fusion');
-    if (tier >= 9) pool.push('fusion', 'rail');
-    if (tier >= 11) pool.push('seeker');
-    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   /* ---------- turn machine ---------- */
@@ -662,7 +710,13 @@ class Game {
       } else {
         this.turns++;
         this._rollWind();
-        this.fuel = PLATFORM.fuel;
+        this.fuel = this.maxFuel;
+        if (this.mods.regen && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
+          const healed = Math.min(this.mods.regen, this.player.maxHp - this.player.hp);
+          this.player.hp += healed;
+          this.popups.push({ x: this.player.x, y: this.player.y - 120, text: `+${healed}`,
+                             color: '#9fd93a', life: 1.1, maxLife: 1.1, vy: -0.9 });
+        }
         this.state = 'aim';
       }
       this._emitHud();
@@ -672,7 +726,7 @@ class Game {
     if (this.state === 'enemy' && now >= this.enemyAt) {
       const shot = this._enemyShot();
       this.foe.barrel = shot.angle;
-      this.fire(this.foe, shot.angle, shot.power, shot.weaponId);
+      this.fire(this.foe, shot.angle, shot.power, this.foeMounts);
       return;
     }
   }
@@ -710,9 +764,11 @@ class Game {
       score: this.score,
       state: this.state,
       fuel: this.fuel,
-      maxFuel: PLATFORM.fuel,
+      maxFuel: this.maxFuel,
+      modules: this.modules,
+      mods: this.mods,
       owned: this.owned,
-      weapon: this.weapon,
+      foeMounts: this.foeMounts || [],
       angle: this.aimAngle,
       power: this.aimPower,
       wind: this.wind,
@@ -720,7 +776,8 @@ class Game {
       player: this.player ? { hp: this.player.hp, max: this.player.maxHp } : null,
       foe: this.foe ? { hp: this.foe.hp, max: this.foe.maxHp } : null,
       canAbility: this.state === 'flight' && !this.abilityUsed &&
-        this.shells.some((s) => s.owner === this.player) && !!WEAPONS[this.weapon].ability,
+        this.shells.some((s) => s.owner === this.player &&
+                                WEAPONS[s.weapon].ability && !s.burst),
     });
   }
 

@@ -428,3 +428,22 @@ html, body {
   color: #6f5a4c;
 }
 .panel-foot .build { margin: 0 10px 0 0; color: #6f5a4c; }
+
+
+/* arsenal readout + armory sections */
+.ammo.module { border-color: #4c6b3a; background: #2b3a22; }
+.rack-split {
+  width: 1px; height: 20px; margin: 0 3px;
+  background: var(--line);
+}
+.shop-section {
+  grid-column: 1 / -1;
+  display: flex; align-items: baseline; gap: 9px;
+  margin: 6px 0 -2px;
+  font-size: 11px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--gold); font-weight: 700;
+}
+.shop-section i {
+  font-style: normal; letter-spacing: .06em; text-transform: none;
+  font-size: 11px; color: var(--ink-dim); font-weight: 400;
+}

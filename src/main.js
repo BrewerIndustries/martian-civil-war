@@ -55,12 +55,6 @@
 
     if (e.repeat) return;
 
-    if (!open && e.key >= '1' && e.key <= '9') {
-      const list = weaponList().filter((w) => ui.ownedWeapons().includes(w));
-      const pick = list[Number(e.key) - 1];
-      if (pick) game.selectWeapon(pick);
-      return;
-    }
     if (e.key === 'r' || e.key === 'R') { if (!open) game.restart(); return; }
     if (e.key === 'm' || e.key === 'M') {
       document.getElementById('btn-mute').textContent = Sfx.toggleMute() ? '🔇' : '🔊';

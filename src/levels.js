@@ -109,11 +109,61 @@ const WEAPONS = {
   },
 };
 
+/* Modules are the other half of the armory: a rolling fortress is a structure,
+   so it can carry more than guns. Bought once, fitted permanently, and unlike
+   mounts they never fire — they change what the platform *is*.
+
+   Kept deliberately modest. A duel where one side simply cannot be hurt is not
+   a duel, so shields shave damage rather than negate it. */
+const MODULES = {
+  plating: {
+    kind: 'hull', icon: '▤', name: 'Ablative Plating', cost: 14000, order: 0,
+    hull: 70, blurb: 'Sacrificial layers across the face. +70 hull.',
+  },
+  frame: {
+    kind: 'hull', icon: '▩', name: 'Reinforced Frame', cost: 34000, order: 1,
+    hull: 150, blurb: 'Rebuilds the load-bearing structure. +150 hull.',
+  },
+  baffles: {
+    kind: 'shield', icon: '◫', name: 'Blast Baffles', cost: 18000, order: 2,
+    splashReduce: 0.45, blurb: 'Vents blast pressure around the hull. Near misses hurt 45% less.',
+  },
+  deflector: {
+    kind: 'shield', icon: '◉', name: 'Deflector Screen', cost: 26000, order: 3,
+    damageReduce: 0.15, blurb: 'A charged screen bleeds off 15% of everything that lands.',
+  },
+  gantry: {
+    kind: 'shield', icon: '✚', name: 'Repair Gantry', cost: 42000, order: 4,
+    regen: 14, blurb: 'Crews patch the structure between volleys. +14 hull each turn.',
+  },
+  reactor: {
+    kind: 'engine', icon: '⌬', name: 'Reactor Uprate', cost: 12000, order: 5,
+    fuel: 60, blurb: 'More power to the drives. +60 fuel every turn.',
+  },
+  treads: {
+    kind: 'engine', icon: '⚙', name: 'Heavy Treads', cost: 20000, order: 6,
+    climb: 9, driveSpeed: 0.7, blurb: 'Climbs steeper ground and moves quicker over it.',
+  },
+  dampers: {
+    kind: 'engine', icon: '⩌', name: 'Inertial Dampers', cost: 16000, order: 7,
+    fallReduce: 0.65, blurb: 'Takes 65% less damage when the ground gives way under you.',
+  },
+};
+
+const MODULE_KINDS = [
+  { id: 'hull', label: 'Hull' },
+  { id: 'shield', label: 'Shields' },
+  { id: 'engine', label: 'Drive' },
+];
+
+const moduleList = () => Object.keys(MODULES).sort((a, b) => MODULES[a].order - MODULES[b].order);
+
 const STARTING_WEAPON = 'laser';
 const weaponList = () => Object.keys(WEAPONS).sort((a, b) => WEAPONS[a].order - WEAPONS[b].order);
 
 const PLATFORM = {
-  hp: 100, w: 74, h: 34,
+  storeys: 3,      // it is a building on wheels, not a tank
+  hp: 100, w: 96, h: 112,   // hit box must cover the whole structure
   fuel: 80,        // drive allowance, refilled at the start of each of your turns
   climb: 13,       // tallest step the tracks can take, in px
   speed: 1.5,      // px per physics step
@@ -152,15 +202,31 @@ const BATTLES = [
     tip: 'Their best gunner, behind their best ground. Bring everything.' },
 ];
 
-// Both platforms field the same hull in a given battle: this is a duel, and an
-// asymmetric hull pool just makes the late campaign arithmetic-impossible.
-// Hulls grow together so heavier mounts stay meaningful rather than one-shotting.
+/* Both platforms field the same hull in a given battle: this is a duel, and an
+   asymmetric hull pool just makes the late campaign arithmetic-impossible.
+
+   Hulls are much larger than they were when a turn meant one shell. A turn is
+   now a full broadside from every mount on the platform, so a late-campaign
+   volley can put a couple of hundred points downrange; a 188 hull would end
+   the battle in two exchanges. Hull grows with the battle, not with the
+   player's arsenal, so buying mounts still tilts the fight your way — that is
+   what the credits are for. */
+const enemyRoster = (i) => {
+  if (i < 2) return ['laser'];
+  if (i < 4) return ['laser', 'scatter'];
+  if (i < 6) return ['laser', 'scatter', 'fusion'];
+  if (i < 8) return ['laser', 'volley', 'fusion', 'rail'];
+  if (i < 10) return ['laser', 'volley', 'fusion', 'rail', 'ion'];
+  return ['laser', 'volley', 'fusion', 'rail', 'seeker', 'barrage'];
+};
+
 BATTLES.forEach((b, i) => {
-  b.hp = 100 + i * 8;
+  b.hp = 130 + i * 34;
   b.enemyHp = b.hp;
   b.playerHp = b.hp;
   b.playerX = 210;
   b.enemyX = 1590;
+  b.enemyMounts = enemyRoster(i);
 });
 
 // Kept for the campaign map and result screen, which speak in "assaults".

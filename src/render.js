@@ -147,90 +147,135 @@ const R = (() => {
 
   /* ---------- assault platforms ---------- */
 
+  /* An assault platform is a building on wheels — a rolling fortress, not a
+     tank. Every mount the platform owns is drawn on it, so the silhouette
+     itself tells you how much firepower is about to go downrange. */
   function platform(ctx, pl, game, isPlayer) {
     if (!pl) return;
     const f = pl.faction;
     const dead = pl.hp <= 0;
     const x = pl.x, y = pl.y;
     const recoil = pl.recoil || 0;
-    const ang = (isPlayer ? game.aimAngle : pl.barrel) * Math.PI / 180;
+    const aim = (isPlayer ? game.aimAngle : pl.barrel);
+    const roster = isPlayer ? game.owned : (game.foeMounts || ['laser']);
+
+    const W = 96, storeyH = 26, storeys = 3;
+    const bodyTop = -34 - storeys * storeyH;
 
     ctx.save();
     ctx.translate(x, y);
 
-    // shadow pooled under the hull
-    ctx.fillStyle = 'rgba(0,0,0,.35)';
-    ctx.beginPath(); ctx.ellipse(0, 0, 44, 8, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.4)';
+    ctx.beginPath(); ctx.ellipse(0, 0, W * 0.6, 9, 0, 0, 6.283); ctx.fill();
+    if (dead) ctx.globalAlpha = 0.5;
 
-    if (dead) ctx.globalAlpha = 0.55;
+    // running gear: a row of heavy wheels under a track skirt
+    ctx.fillStyle = '#2b2426';
+    rr(ctx, -W / 2 - 4, -22, W + 8, 20, 8); ctx.fill();
+    ctx.strokeStyle = '#181415'; ctx.lineWidth = 2;
+    rr(ctx, -W / 2 - 4, -22, W + 8, 20, 8); ctx.stroke();
+    for (let i = 0; i < 5; i++) {
+      const wx = -W / 2 + 10 + i * (W - 20) / 4;
+      ctx.fillStyle = '#3d3437';
+      ctx.beginPath(); ctx.arc(wx, -11, 8.5, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = '#514548'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      const a = game.time * 0.6 + i;
+      ctx.moveTo(wx - Math.cos(a) * 5, -11 - Math.sin(a) * 5);
+      ctx.lineTo(wx + Math.cos(a) * 5, -11 + Math.sin(a) * 5);
+      ctx.stroke();
+    }
 
-    // tracks
-    ctx.fillStyle = '#2f2a2c';
-    rr(ctx, -38, -18, 76, 16, 7); ctx.fill();
-    ctx.strokeStyle = '#1b1718'; ctx.lineWidth = 2;
-    rr(ctx, -38, -18, 76, 16, 7); ctx.stroke();
-    ctx.fillStyle = '#4a4245';
-    for (let i = -3; i <= 3; i++) { ctx.fillRect(i * 10 - 3, -16, 5, 12); }
+    // hull: stacked storeys with lit windows
+    for (let sIdx = 0; sIdx < storeys; sIdx++) {
+      const inset = sIdx * 7;
+      const top = -34 - (sIdx + 1) * storeyH;
+      const w = W - inset * 2;
+      const g = ctx.createLinearGradient(0, top, 0, top + storeyH);
+      g.addColorStop(0, '#7c8290');
+      g.addColorStop(1, '#4c515b');
+      ctx.fillStyle = g;
+      rr(ctx, -w / 2, top, w, storeyH, 3); ctx.fill();
+      ctx.strokeStyle = '#2b2f37'; ctx.lineWidth = 2;
+      rr(ctx, -w / 2, top, w, storeyH, 3); ctx.stroke();
 
-    // hull
-    const hull = ctx.createLinearGradient(0, -34, 0, -16);
-    hull.addColorStop(0, '#7d838f');
-    hull.addColorStop(1, '#4a4f59');
-    ctx.fillStyle = hull;
-    ctx.beginPath();
-    ctx.moveTo(-32, -18); ctx.lineTo(-24, -34); ctx.lineTo(26, -34);
-    ctx.lineTo(34, -18); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#2c3038'; ctx.lineWidth = 2; ctx.stroke();
+      const lit = !dead;
+      const cols = Math.max(2, Math.floor(w / 20));
+      for (let c = 0; c < cols; c++) {
+        const wx = -w / 2 + 9 + c * (w - 18) / (cols - 1 || 1);
+        ctx.fillStyle = lit ? 'rgba(255,206,132,.85)' : 'rgba(40,36,38,.9)';
+        ctx.fillRect(wx - 3.5, top + 8, 7, 9);
+      }
+    }
 
-    // house stripe + running lights
+    // parapet and house banner on the roof
+    ctx.fillStyle = '#5b616c';
+    rr(ctx, -W / 2 + 12, bodyTop - 7, W - 24, 8, 2); ctx.fill();
     ctx.fillStyle = f.primary;
-    ctx.fillRect(-24, -26, 48, 4);
-    const blink = 0.55 + 0.45 * Math.sin(game.time * 3 + (isPlayer ? 0 : 1.6));
-    ctx.globalAlpha = (dead ? 0.2 : blink) * (ctx.globalAlpha || 1);
-    ctx.fillStyle = f.light;
-    ctx.beginPath(); ctx.arc(-28, -30, 2.6, 0, 6.283); ctx.fill();
-    ctx.beginPath(); ctx.arc(30, -30, 2.6, 0, 6.283); ctx.fill();
-    ctx.globalAlpha = dead ? 0.55 : 1;
+    ctx.fillRect(-W / 2 + 14, -36 - storeyH, W - 28, 4);
+    if (!dead) {
+      const bx = -W / 2 + 16, by = bodyTop - 40;
+      ctx.strokeStyle = '#6b512c'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx, bodyTop - 6); ctx.stroke();
+      ctx.fillStyle = f.primary;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + 30 + Math.sin(game.time * 2.4) * 4, by + 7);
+      ctx.lineTo(bx + 27, by + 17);
+      ctx.lineTo(bx, by + 23);
+      ctx.closePath(); ctx.fill();
+    }
 
-    // barrel, kicking back on recoil
-    ctx.save();
-    ctx.translate(0, -30);
-    ctx.scale(pl.facing, 1);
-    ctx.rotate(-ang);
-    ctx.translate(-recoil * 7, 0);
-    const bar = ctx.createLinearGradient(0, -5, 0, 5);
-    bar.addColorStop(0, '#9aa2ae'); bar.addColorStop(1, '#565c66');
-    ctx.fillStyle = bar;
-    rr(ctx, 4, -5, 40, 10, 3); ctx.fill();
-    ctx.strokeStyle = '#31353d'; ctx.lineWidth = 1.6;
-    rr(ctx, 4, -5, 40, 10, 3); ctx.stroke();
-    ctx.fillStyle = f.primary;                 // emitter ring at the mouth
-    rr(ctx, 40, -6, 5, 12, 2); ctx.fill();
-    ctx.restore();
+    // one barrel per mount, ranged up the face of the building
+    const n = roster.length;
+    roster.forEach((id, i) => {
+      const w = WEAPONS[id];
+      if (!w) return;
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const my = -30 - 12 - t * (storeys * storeyH - 16);
+      const mx = (W / 2 - 8 - (i % 2) * 9) * pl.facing;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.scale(pl.facing, 1);
+      ctx.rotate(-aim * Math.PI / 180);
+      ctx.translate(-recoil * 5, 0);
 
-    // turret cap
-    ctx.fillStyle = '#6c727d';
-    ctx.beginPath(); ctx.arc(0, -30, 9, 0, 6.283); ctx.fill();
-    ctx.strokeStyle = '#2c3038'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#3f444d';
+      ctx.beginPath(); ctx.arc(0, 0, 6, 0, 6.283); ctx.fill();
+      const bar = ctx.createLinearGradient(0, -4, 0, 4);
+      bar.addColorStop(0, '#98a0ac'); bar.addColorStop(1, '#535963');
+      ctx.fillStyle = bar;
+      rr(ctx, 2, -3.6, 26, 7.2, 2); ctx.fill();
+      ctx.strokeStyle = '#2d3138'; ctx.lineWidth = 1.2;
+      rr(ctx, 2, -3.6, 26, 7.2, 2); ctx.stroke();
+      ctx.fillStyle = w.tracer;                    // emitter glows its own colour
+      rr(ctx, 25, -4.4, 4, 8.8, 1.5); ctx.fill();
+      ctx.restore();
+    });
 
     if (dead) {
       ctx.globalAlpha = 1;
       ctx.strokeStyle = '#1d1a19'; ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(-18, -40); ctx.lineTo(-6, -26); ctx.moveTo(10, -42); ctx.lineTo(20, -28);
+      ctx.moveTo(-24, bodyTop + 20); ctx.lineTo(-6, bodyTop + 44);
+      ctx.moveTo(14, bodyTop + 16); ctx.lineTo(30, bodyTop + 40);
       ctx.stroke();
     }
     ctx.restore();
 
-    // hull bar floating above
+    // hull bar above the roof
     if (!dead) {
-      const w = 62, h = 6, by = y - 56;
+      const bw = 78, bh = 7, by = y + bodyTop - 54;
       ctx.save();
       ctx.fillStyle = 'rgba(10,7,6,.75)';
-      rr(ctx, x - w / 2, by, w, h, 3); ctx.fill();
+      rr(ctx, x - bw / 2, by, bw, bh, 3); ctx.fill();
       const frac = pl.hp / pl.maxHp;
       ctx.fillStyle = frac > 0.5 ? f.light : frac > 0.25 ? '#f0b04a' : '#e2634a';
-      rr(ctx, x - w / 2 + 1, by + 1, (w - 2) * frac, h - 2, 2); ctx.fill();
+      rr(ctx, x - bw / 2 + 1, by + 1, (bw - 2) * frac, bh - 2, 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.7)';
+      ctx.font = 'bold 9px "Trebuchet MS", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${Math.ceil(pl.hp)} · ${roster.length} mounts`, x, by - 3);
       ctx.restore();
     }
   }
@@ -274,100 +319,77 @@ const R = (() => {
   function aim(ctx, game) {
     const pl = game.player;
     if (!pl || pl.hp <= 0) return;
-    const w = WEAPONS[game.weapon];
-    const salvo = w.salvo;
-    const count = salvo ? salvo.count : 1;
 
-    // One arc per shell the trigger will actually launch, so an additive
-    // mount shows its whole fan before you commit to it.
+    /* One arc per mount on the platform. A turn is a broadside and every mount
+       flies differently, so this is the actual pattern about to go downrange —
+       which is the only way to aim a fortress that cannot snipe. Each arc still
+       stops at its own apex, so the impact points stay yours to work out. */
     const arcs = [];
-    for (let k = 0; k < count; k++) {
-      const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;
-      const p = game.aimPreview(
-        game.aimAngle + t * (salvo ? salvo.spread : 0),
-        game.aimPower + t * (salvo ? salvo.stagger : 0));
-      if (p && p.points.length > 1) arcs.push(p);
+    for (const id of game.owned) {
+      const w = WEAPONS[id];
+      const salvo = w.salvo;
+      const count = salvo ? salvo.count : 1;
+      for (let k = 0; k < count; k++) {
+        const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;
+        const p = game.aimPreview(
+          game.aimAngle + t * (salvo ? salvo.spread : 0),
+          game.aimPower + t * (salvo ? salvo.stagger : 0), id);
+        if (p && p.points.length > 1) arcs.push({ p, w, lead: k === 0 });
+      }
     }
     if (!arcs.length) return;
+    const single = arcs.length === 1;
 
     ctx.save();
     ctx.lineCap = 'round';
 
-    arcs.forEach((prev, idx) => {
+    arcs.forEach(({ p: prev, w, lead }) => {
       const pts = prev.points;
-      const lead = count === 1 || idx === 0 || idx === arcs.length - 1;
-      const hue = prev.blocked ? '#ff8a5c' : prev.reason === 'spent' ? '#a8f0ff' : '#ffe0a0';
+      const hue = prev.blocked ? '#ff8a5c' : (w.tracer || '#ffe0a0');
 
       for (let i = 1; i < pts.length; i++) {
         const f = 1 - (i / pts.length) * 0.75;
-        ctx.globalAlpha = f * (count === 1 ? 0.75 : 0.5);
+        ctx.globalAlpha = f * (single ? 0.75 : 0.42);
         ctx.strokeStyle = hue;
-        ctx.lineWidth = (1 + f * 2.4) * (count === 1 ? 1 : 0.72);
+        ctx.lineWidth = (1 + f * 2.2) * (single ? 1 : 0.7);
         ctx.beginPath();
         ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
         ctx.lineTo(pts[i].x, pts[i].y);
         ctx.stroke();
       }
-
-      if (count === 1) {
-        ctx.globalAlpha = 0.85;
-        ctx.fillStyle = hue;
-        for (let i = 8; i < pts.length - 4; i += 8) {
-          ctx.beginPath(); ctx.arc(pts[i].x, pts[i].y, 1.9, 0, 6.283); ctx.fill();
-        }
-      }
       if (!lead) return;
 
       const tip = prev.tip;
+      ctx.globalAlpha = single ? 0.95 : 0.6;
       if (prev.blocked) {
-        ctx.globalAlpha = 0.95;
-        ctx.strokeStyle = '#ff8a5c'; ctx.lineWidth = 2.4;
+        ctx.strokeStyle = '#ff8a5c'; ctx.lineWidth = 2.2;
         ctx.beginPath();
-        ctx.moveTo(tip.x - 7, tip.y - 7); ctx.lineTo(tip.x + 7, tip.y + 7);
-        ctx.moveTo(tip.x + 7, tip.y - 7); ctx.lineTo(tip.x - 7, tip.y + 7);
+        ctx.moveTo(tip.x - 6, tip.y - 6); ctx.lineTo(tip.x + 6, tip.y + 6);
+        ctx.moveTo(tip.x + 6, tip.y - 6); ctx.lineTo(tip.x - 6, tip.y + 6);
         ctx.stroke();
       } else if (prev.reason === 'spent') {
-        ctx.globalAlpha = 0.8;
-        ctx.strokeStyle = '#a8f0ff'; ctx.lineWidth = 2;
+        ctx.strokeStyle = hue; ctx.lineWidth = 1.8;
         ctx.setLineDash([3, 4]);
-        ctx.beginPath(); ctx.arc(tip.x, tip.y, 8, 0, 6.283); ctx.stroke();
+        ctx.beginPath(); ctx.arc(tip.x, tip.y, 7, 0, 6.283); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.globalAlpha = 0.65;
-        ctx.fillStyle = '#a8f0ff';
-        ctx.font = 'bold 10px "Trebuchet MS", sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('RANGE', tip.x, tip.y - 15);
-      } else if (prev.reason === 'apex') {
-        ctx.globalAlpha = 0.3;
-        ctx.setLineDash([3, 6]);
-        ctx.strokeStyle = '#ffe0a0'; ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.moveTo(tip.x, tip.y);
-        ctx.lineTo(tip.x, Math.min(prev.groundY, WORLD.h));
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.globalAlpha = 0.95;
-        ctx.strokeStyle = '#ffe0a0'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(tip.x, tip.y, 6, 0, 6.283); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(tip.x - 11, tip.y); ctx.lineTo(tip.x - 7, tip.y);
-        ctx.moveTo(tip.x + 7, tip.y); ctx.lineTo(tip.x + 11, tip.y);
-        ctx.moveTo(tip.x, tip.y - 11); ctx.lineTo(tip.x, tip.y - 7);
-        ctx.stroke();
-
-        if (count === 1) {
-          ctx.globalAlpha = 0.7;
-          ctx.fillStyle = '#ffe0a0';
-          ctx.font = 'bold 11px "Trebuchet MS", sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('APEX', tip.x, tip.y - 17);
+      } else {
+        if (single) {
+          ctx.globalAlpha = 0.28;
+          ctx.setLineDash([3, 6]);
+          ctx.strokeStyle = hue; ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(tip.x, tip.y);
+          ctx.lineTo(tip.x, Math.min(prev.groundY, WORLD.h));
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 0.95;
         }
+        ctx.strokeStyle = hue; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(tip.x, tip.y, single ? 6 : 4, 0, 6.283); ctx.stroke();
       }
     });
     ctx.globalAlpha = 1;
 
-    // power gauge under the hull
     const pw = 66, ph = 7, bx = pl.x - pw / 2, by = pl.y + 12;
     ctx.fillStyle = 'rgba(10,7,6,.72)';
     rr(ctx, bx, by, pw, ph, 3); ctx.fill();
@@ -381,11 +403,12 @@ const R = (() => {
      HUD label alone was too easy to miss, so prompt on the shell itself
      while the window to use it is actually open. */
   function abilityPrompt(ctx, game, t) {
-    const w = WEAPONS[game.weapon];
-    if (!w.ability || game.abilityUsed) return;
-    const mine = game.shells.filter((s) => s.owner === game.player);
+    if (game.abilityUsed) return;
+    const mine = game.shells.filter((s) => s.owner === game.player &&
+                                           WEAPONS[s.weapon].ability && !s.burst);
     if (!mine.length) return;
     const s = mine[0];
+    const w = WEAPONS[s.weapon];
 
     const pulse = 0.5 + 0.5 * Math.sin(t * 7);
     const label = { split: 'BURST', detonate: 'DETONATE', dive: 'PUNCH',
@@ -395,7 +418,7 @@ const R = (() => {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.font = 'bold 13px "Trebuchet MS", sans-serif';
-    const text = `SPACE · ${label}`;
+    const text = mine.length > 1 ? `SPACE · ${mine.length} MOUNTS` : `SPACE · ${label}`;
     const pad = 9;
     const tw = ctx.measureText(text).width;
 
