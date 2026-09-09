@@ -35,6 +35,9 @@ class Game {
     this.owned = [STARTING_WEAPON];
     this.modules = [];
     this.mods = this._rollUpModules();
+    this.shieldLayout = {};
+    this.playerWeak = [];
+    this.foeWeak = [];
     this.armed = [STARTING_WEAPON];
     /* Each armed mount carries its own firing solution. A turn is: arm the
        volley, lay each gun in turn, then fire everything at once — so the
@@ -193,10 +196,107 @@ class Game {
     this._emitHud();
   }
 
+  /* ---------- zones, weak spots and placed shields ---------- */
+
+  // Which of the nine zones did a hit at (x, y) land on?
+  zoneAt(pl, x, y) {
+    const w = pl.w || PLATFORM.w, h = pl.h || PLATFORM.h;
+    const left = pl.x - w / 2, top = pl.y - h;
+    const col = clamp(Math.floor((x - left) / (w / ZONE_COLS)), 0, ZONE_COLS - 1);
+    const row = clamp(Math.floor((y - top) / (h / ZONE_ROWS)), 0, ZONE_ROWS - 1);
+    return row * ZONE_COLS + col;
+  }
+
+  // Two weak spots per structure, rerolled per battle but fixed within it, so
+  // they can be found and then either covered or exploited.
+  _rollWeakSpots(seed) {
+    const rnd = mulberry32(seed);
+    const pick = [];
+    while (pick.length < 2) {
+      const z = Math.floor(rnd() * ZONE_COUNT);
+      if (!pick.includes(z)) pick.push(z);
+    }
+    return pick;
+  }
+
+  get shieldStock() {
+    return {
+      plate: PLATFORM.plates + (this.mods.plates || 0),
+      screen: PLATFORM.screens + (this.mods.screens || 0),
+    };
+  }
+  shieldUsed(type) {
+    return Object.values(this.shieldLayout || {}).filter((s) => s.type === type).length;
+  }
+
+  /* Cycle a zone: empty -> plate -> screen -> empty, skipping anything you
+     have run out of. One control, no drag targets, works with a click or a
+     key. */
+  cycleShield(zone) {
+    if (this.state !== 'arming' && this.state !== 'aim') return;
+    const cur = this.shieldLayout[zone];
+    const stock = this.shieldStock;
+    const order = [null, 'plate', 'screen'];
+    let at = order.indexOf(cur ? cur.type : null);
+    for (let step = 0; step < 3; step++) {
+      at = (at + 1) % 3;
+      const want = order[at];
+      if (!want) { delete this.shieldLayout[zone]; Sfx.click(); this._emitHud(); return; }
+      const inUse = this.shieldUsed(want) - (cur && cur.type === want ? 1 : 0);
+      if (inUse < stock[want]) {
+        const spec = SHIELDS[want];
+        this.shieldLayout[zone] = want === 'plate'
+          ? { type: 'plate', hp: spec.hp, max: spec.hp }
+          : { type: 'screen', charge: spec.charge, max: spec.charge };
+        Sfx.click(); this._emitHud(); return;
+      }
+    }
+    Sfx.thud(0.4);
+  }
+
+  // Screens come back between volleys; plates do not.
+  _rechargeShields() {
+    for (const seg of Object.values(this.shieldLayout || {})) {
+      if (seg.type === 'screen') seg.charge = Math.min(seg.max, seg.charge + SHIELDS.screen.recharge);
+    }
+  }
+
+  /* Resolve one hit against a structure: weak spot first, then whatever is
+     bolted over that zone. Returns the damage that actually gets through. */
+  _throughShields(pl, zone, amount) {
+    const weak = (pl === this.player ? this.playerWeak : this.foeWeak) || [];
+    let dmg = amount * (weak.includes(zone) ? WEAK_MULTIPLIER : 1);
+
+    if (pl !== this.player) return dmg;            // only you place segments
+    const seg = this.shieldLayout[zone];
+    if (!seg) return dmg;
+
+    if (seg.type === 'plate') {
+      const soaked = Math.min(seg.hp, dmg);
+      seg.hp -= soaked;
+      dmg -= soaked;
+      if (seg.hp <= 0) {
+        this.popups.push({ x: pl.x, y: pl.y - 150, text: 'PLATE GONE', color: '#c9a58a',
+                           life: 1.1, maxLife: 1.1, vy: -0.8 });
+      }
+    } else if (seg.charge > 0) {
+      const blocked = dmg * SHIELDS.screen.reduce;
+      const drawn = Math.min(seg.charge, blocked);
+      seg.charge -= drawn;
+      dmg -= drawn;
+      if (seg.charge <= 0) {
+        this.popups.push({ x: pl.x, y: pl.y - 150, text: 'SCREEN DOWN', color: '#8fd0ff',
+                           life: 1.1, maxLife: 1.1, vy: -0.8 });
+      }
+    }
+    return Math.max(0, dmg);
+  }
+
   _rollUpModules() {
     const m = { hull: 0, damageReduce: 0, splashReduce: 0, regen: 0,
                 fuel: 0, climb: 0, driveSpeed: 0, fallReduce: 0, firepower: 0,
-                windResist: 0, impactMarker: false, fullArc: false };
+                windResist: 0, plates: 0, screens: 0,
+                impactMarker: false, fullArc: false, scanner: false };
     for (const id of this.modules || []) {
       const mod = MODULES[id];
       if (!mod) continue;
@@ -254,6 +354,9 @@ class Game {
     this.player = this._makePlatform(spec.playerX, this.faction, spec.playerHp + this.mods.hull, 1);
     this.foe = this._makePlatform(spec.enemyX, otherFaction(this.faction), spec.enemyHp, -1, !!spec.boss);
 
+    this.playerWeak = this._rollWeakSpots(spec.seed * 7 + 13);
+    this.foeWeak = this._rollWeakSpots(spec.seed * 31 + 5);
+    this.shieldLayout = {};
     this.shells.length = 0;
     this.particles.length = 0;
     this.popups.length = 0;
@@ -778,6 +881,8 @@ class Game {
       const direct = pl === hitPlatform;
       const falloff = direct ? 1 : clamp(1 - d / blast, 0, 1);
       let raw = w.damage * (0.35 + 0.65 * falloff);
+      // where on the structure it landed decides a great deal
+      raw = this._throughShields(pl, this.zoneAt(pl, x, y), raw);
       if (pl === this.player) {
         raw *= (1 - this.mods.damageReduce);
         if (!direct) raw *= (1 - this.mods.splashReduce);   // baffles vent near misses
@@ -938,6 +1043,7 @@ class Game {
         this.turns++;
         this._rollWind();
         this.fuel = this.maxFuel;
+        this._rechargeShields();
         if (this.mods.regen && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
           const healed = Math.min(this.mods.regen, this.player.maxHp - this.player.hp);
           this.player.hp += healed;
@@ -997,6 +1103,9 @@ class Game {
       maxFuel: this.maxFuel,
       modules: this.modules,
       mods: this.mods,
+      shieldLayout: this.shieldLayout,
+      playerWeak: this.playerWeak,
+      foeWeak: this.foeWeak,
       owned: this.owned,
       armed: this.armed,
       aimIndex: this.aimIndex,
@@ -1134,7 +1243,9 @@ class Game {
     if (this.battle) {
       this.terrain.draw(ctx);
       R.platform(ctx, this.foe, this, false);
+      R.armour(ctx, this.foe, this, false);
       R.platform(ctx, this.player, this, true);
+      R.armour(ctx, this.player, this, true);
       if (this.state === 'aim') R.aim(ctx, this);
       for (const s of this.shells) R.shell(ctx, s);
       if (this.state === 'flight') R.abilityPrompt(ctx, this, this.time);

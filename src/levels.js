@@ -202,6 +202,14 @@ const MODULES = {
   core:          { kind: 'power', icon: '◎', name: 'Fusion Core', cost: 44000, order: 12,
                    firepower: 46, blurb: 'A second reactor feeding the gun decks.' },
 
+  // --- shield segments: the ones you place yourself ---
+  platerack: { kind: 'shieldkit', icon: '▬', name: 'Plate Rack', cost: 22000, order: 19,
+               plates: 2, blurb: 'Two more armour plates to hang on the frame.' },
+  emitters:  { kind: 'shieldkit', icon: '◟', name: 'Screen Emitters', cost: 30000, order: 20,
+               screens: 2, blurb: 'Two more energy screens, and they recharge between volleys.' },
+  grid:      { kind: 'shieldkit', icon: '⊞', name: 'Shield Grid', cost: 64000, order: 21,
+               plates: 2, screens: 2, blurb: 'A full lattice: two more of each kind.' },
+
   // --- targeting: these upgrade what you can SEE, which is its own kind of power ---
   rangefinder: { kind: 'targeting', icon: '⊹', name: 'Rangefinder', cost: 20000, order: 13,
                  impactMarker: true,
@@ -211,6 +219,9 @@ const MODULES = {
                  blurb: 'Plots the whole trajectory to impact instead of stopping at the apex.' },
   stabiliser:  { kind: 'targeting', icon: '⊙', name: 'Gyro Stabilisers', cost: 26000, order: 15,
                  windResist: 0.6, blurb: 'Holds the shot steady: the gale moves your shells 60% less.' },
+  scanner:     { kind: 'targeting', icon: '⊚', name: 'Structural Scanner', cost: 38000, order: 16,
+                 scanner: true,
+                 blurb: 'Reads the enemy structure and marks its weak spots. They take double damage whether you can see them or not.' },
 
   // --- drive ---
   reactor: { kind: 'engine', icon: '⌬', name: 'Reactor Uprate', cost: 12000, order: 16,
@@ -224,12 +235,41 @@ const MODULES = {
 const MODULE_KINDS = [
   { id: 'hull', label: 'Hull' },
   { id: 'shield', label: 'Shields' },
+  { id: 'shieldkit', label: 'Shield Segments' },
   { id: 'power', label: 'Power' },
   { id: 'targeting', label: 'Targeting' },
   { id: 'engine', label: 'Drive' },
 ];
 
 const moduleList = () => Object.keys(MODULES).sort((a, b) => MODULES[a].order - MODULES[b].order);
+
+/* ---------- structure zones, weak spots and shields ----------
+   A platform is a building, so where a shell lands on it matters. The face is
+   divided into a 3x3 grid; two of those zones are weak spots that take double
+   damage, rerolled each battle, and you fit shield segments over the grid to
+   cover what matters. Which is the whole point: hull modules are a flat
+   number, but a shield you place is a decision. */
+
+const ZONE_COLS = 3, ZONE_ROWS = 3, ZONE_COUNT = ZONE_COLS * ZONE_ROWS;
+
+// Flavour by row, so a weak spot reads as a part of the structure.
+const ZONE_NAMES = [
+  ['Spotting deck', 'Bridge', 'Signal mast'],
+  ['Magazine', 'Gun deck', 'Loading gear'],
+  ['Drive train', 'Reactor', 'Track housing'],
+];
+const WEAK_MULTIPLIER = 2.0;
+
+const SHIELDS = {
+  plate: {
+    id: 'plate', name: 'Armour Plate', icon: '▬', hp: 110,
+    blurb: 'Soaks damage until it is gone. It does not come back mid-battle.',
+  },
+  screen: {
+    id: 'screen', name: 'Energy Screen', icon: '◟', reduce: 0.55, charge: 130, recharge: 45,
+    blurb: 'Cuts damage in its zone by 55% and recharges between volleys — until it is overloaded.',
+  },
+};
 
 const STARTING_WEAPON = 'laser';
 const weaponList = () => Object.keys(WEAPONS).sort((a, b) => WEAPONS[a].order - WEAPONS[b].order);
@@ -248,6 +288,7 @@ const PLATFORM = {
      repositioning move: at 80 fuel the platform travelled 80px, less than its
      own width on an 1800px field, which read as "driving is broken" rather
      than "driving is limited". */
+  plates: 1, screens: 1,      // before any module: enough to make the choice real
   fuel: 260,
   climb: 15,       // tallest step the tracks can take, in px
   speed: 2.4,      // px per physics step

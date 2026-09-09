@@ -175,7 +175,7 @@ const UI = (() => {
 
   function refreshNav() {
     if (!$('help').classList.contains('hidden')) return navSet('#help button');
-    if (!$('arming').classList.contains('hidden')) return navSet('.arm-card');
+    if (!$('arming').classList.contains('hidden')) return navSet('.arm-card, .shield-cell');
     if (!$('armory').classList.contains('hidden')) return navSet('.shop-card button:not(:disabled)');
     if (!$('levels').classList.contains('hidden')) return navSet('.level-card:not(.locked)');
     if (!$('result').classList.contains('hidden')) return navSet('#result .panel-actions button');
@@ -219,11 +219,42 @@ const UI = (() => {
       grid.appendChild(el);
     });
 
+    renderShields();
+
     const fitted = $('arming-fitted');
     fitted.innerHTML = game.modules.length
       ? '<span class="fitted-label">Fitted</span>' + game.modules.map((m) =>
           `<span class="fitted-chip" title="${MODULES[m].blurb}">${MODULES[m].icon} ${MODULES[m].name}</span>`).join('')
       : '<span class="fitted-label">No modules fitted — see the Armory</span>';
+  }
+
+  /* The shield minigame: nine zones over the face of your platform, cycled
+     between empty, an armour plate and an energy screen. Weak spots are marked
+     because covering them is the whole decision. */
+  function renderShields() {
+    const grid = $('shield-grid');
+    const stock = game.shieldStock;
+    grid.innerHTML = '';
+    for (let z = 0; z < ZONE_COUNT; z++) {
+      const seg = game.shieldLayout[z];
+      const weak = (game.playerWeak || []).includes(z);
+      const row = Math.floor(z / ZONE_COLS), col = z % ZONE_COLS;
+      const cell = document.createElement('button');
+      cell.className = 'shield-cell' + (weak ? ' weak' : '') + (seg ? ' has-' + seg.type : '');
+      const pct = seg
+        ? Math.round(100 * (seg.type === 'plate' ? seg.hp / seg.max : seg.charge / seg.max))
+        : 0;
+      cell.innerHTML =
+        `<span class="sc-icon">${seg ? SHIELDS[seg.type].icon : ''}</span>` +
+        `<span class="sc-name">${ZONE_NAMES[row][col]}</span>` +
+        (seg ? `<span class="sc-bar"><i style="width:${pct}%"></i></span>` : '');
+      cell.title = `${ZONE_NAMES[row][col]}${weak ? ' — WEAK SPOT (double damage)' : ''}`;
+      cell.onclick = () => { game.cycleShield(z); renderShields(); refreshNav(); };
+      grid.appendChild(cell);
+    }
+    $('shield-stock').innerHTML =
+      `<span class="stock-chip"><b>${game.shieldUsed('plate')}/${stock.plate}</b> ${SHIELDS.plate.icon} plates</span>` +
+      `<span class="stock-chip"><b>${game.shieldUsed('screen')}/${stock.screen}</b> ${SHIELDS.screen.icon} screens</span>`;
   }
 
   function showArming() {
@@ -492,7 +523,7 @@ const UI = (() => {
     renderGrid();
     refreshNav();
     return {
-      hud, showResult, showLevels, showArmory, showArming, renderArming, onTurnStart, start, hide,
+      hud, showResult, showLevels, showArmory, showArming, renderArming, renderShields, onTurnStart, start, hide,
       ownedWeapons: () => progress.owned,
       isOverlayOpen: anyOpen,
       topOverlay,

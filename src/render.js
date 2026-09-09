@@ -392,6 +392,63 @@ const R = (() => {
     }
   }
 
+  /* Weak spots and fitted shield segments, drawn over the structure they
+     belong to. Your own are always visible; the enemy's only once a
+     Structural Scanner has read them — the module buys sight, not the
+     vulnerability, which is there either way. */
+  function armour(ctx, pl, game, isPlayer) {
+    if (!pl || pl.hp <= 0) return;
+    const w = pl.w || PLATFORM.w, h = pl.h || PLATFORM.h;
+    const left = pl.x - w / 2, top = pl.y - h;
+    const cw = w / ZONE_COLS, ch = h / ZONE_ROWS;
+    const weak = isPlayer ? (game.playerWeak || []) : (game.foeWeak || []);
+    const showWeak = isPlayer || game.mods.scanner;
+
+    ctx.save();
+    for (let z = 0; z < ZONE_COUNT; z++) {
+      const col = z % ZONE_COLS, row = Math.floor(z / ZONE_COLS);
+      const x = left + col * cw, y = top + row * ch;
+
+      if (showWeak && weak.includes(z)) {
+        const pulse = 0.5 + 0.5 * Math.sin(game.time * 4 + z);
+        ctx.globalAlpha = 0.24 + pulse * 0.26;
+        ctx.strokeStyle = '#ff6a4a';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(x + 2, y + 2, cw - 4, ch - 4);
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#ff6a4a';
+        ctx.font = 'bold 10px "Trebuchet MS", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('!', x + cw / 2, y + ch / 2 + 4);
+      }
+
+      const seg = isPlayer ? game.shieldLayout[z] : null;
+      if (!seg) continue;
+      if (seg.type === 'plate') {
+        const frac = seg.hp / seg.max;
+        ctx.globalAlpha = 0.35 + frac * 0.5;
+        ctx.fillStyle = '#b4a189';
+        rr(ctx, x + 2, y + 2, cw - 4, ch - 4, 3); ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = '#7d6d59'; ctx.lineWidth = 1.5;
+        rr(ctx, x + 2, y + 2, cw - 4, ch - 4, 3); ctx.stroke();
+      } else {
+        const frac = seg.charge / seg.max;
+        if (frac <= 0) continue;
+        const pulse = 0.5 + 0.5 * Math.sin(game.time * 2.5 + z);
+        ctx.globalAlpha = 0.14 + frac * 0.3 + pulse * 0.06;
+        ctx.fillStyle = '#8fd0ff';
+        rr(ctx, x + 1, y + 1, cw - 2, ch - 2, 5); ctx.fill();
+        ctx.globalAlpha = 0.3 + frac * 0.5;
+        ctx.strokeStyle = '#a8e4ff'; ctx.lineWidth = 1.6;
+        rr(ctx, x + 1, y + 1, cw - 2, ch - 2, 5); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   /* ---------- shells ---------- */
 
   function shell(ctx, s) {
@@ -590,5 +647,5 @@ const R = (() => {
     ctx.restore();
   }
 
-  return { background, platform, shell, aim, abilityPrompt, particles, popups, rr };
+  return { background, platform, armour, shell, aim, abilityPrompt, particles, popups, rr };
 })();

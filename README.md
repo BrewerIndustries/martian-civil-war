@@ -14,6 +14,9 @@ platform across broken ground until one of you stops answering.
    Dig with one, go for the hull with another, walk a third onto the ridge.
 3. **Fire all** — the whole volley goes at once.
 
+Shields are adjusted in that same panel, so where your armour sits is a
+decision you can revisit every turn.
+
 The terrain is a combatant, not scenery. Every shell removes real ground, so
 the ridge between you and them is a problem you can solve two ways: arc over
 it, or spend shots boring a tunnel straight through and fire down the corridor.
@@ -40,9 +43,26 @@ the campaign map, **M** mutes.
 - **Destructible bitmask terrain.** Not a heightmap: one byte per world pixel,
   which is what makes tunnels, overhangs and caverns possible at all. Craters
   cut through painted rock strata and scorch their own rims.
-- **12 battles** across six terrain profiles (ridge, twin, canyon, plateau,
+- **18 battles** across six terrain profiles (ridge, twin, canyon, plateau,
   spires, crater) with an enemy gunner that ranges you better as you progress.
   Stars are awarded on hull remaining; each battle unlocks the next.
+- **Fortresses.** Every sixth battle the enemy is not a platform at all but a
+  three-tower gun house dug into the ridge: far more hull, a heavier volley,
+  and a roster from two battles further on. It cannot be driven off its
+  ground — but it is a much wider target, and the rock under it can still be
+  taken away.
+- **Weak spots and shields.** Both structures are divided into nine zones —
+  bridge, magazine, reactor, drive train and so on. Two of them are weak spots
+  that take **double damage**, rerolled each battle. You fit shield segments
+  over your own grid in the arming panel:
+
+  | Segment | Behaviour |
+  |---|---|
+  | Armour Plate | soaks damage outright until it is gone, and does not come back mid-battle |
+  | Energy Screen | cuts 55% in its zone and recharges between volleys, until it is overloaded |
+
+  Your weak spots are always visible. The enemy's are there whether you can see
+  them or not — a **Structural Scanner** buys the sight, not the vulnerability.
 - **An armory.** Everything is permanent — bought once with salvage credits,
   then fitted for every battle after. Mounts cost **firepower** to arm, and the
   platform can only power so much per volley, so owning more is about having
@@ -102,6 +122,10 @@ the campaign map, **M** mutes.
   | Reactor Uprate | 12,000 | +60 fuel per turn |
   | Heavy Treads | 20,000 | climbs steeper, drives quicker |
   | Inertial Dampers | 16,000 | −65% fall damage |
+
+  Plus **Shield Segments** (Plate Rack, Screen Emitters, Shield Grid) which
+  give you more to place on the zone grid, and a **Structural Scanner** that
+  marks the enemy's weak spots.
 
   Targeting modules are worth calling out: they upgrade what you are allowed to
   *see*, which in an artillery game is indistinguishable from skill. The
@@ -167,6 +191,24 @@ python3 ../martian-civil-war-test/serve.py 4792 ../martian-civil-war-test
 | `src/audio.js` | Synthesised sound (WebAudio, no audio files) |
 | `src/main.js` | Bootstrap and keyboard |
 | `serve.py` | No-cache static dev server |
+
+## Keyboard
+
+The whole game is playable without a mouse — press **?** in game for the card.
+Overlays hand a shared cursor to the UI layer (arrows move it, **Enter** takes
+it) rather than each panel growing its own key handling, and activating simply
+clicks the same button the mouse would, so there is no second code path to
+drift out of step.
+
+| | |
+|---|---|
+| **V** | arming panel · **Space** arms the highlighted mount · **Enter** done |
+| **A** / **D** | drive (spends fuel) |
+| **←→** / **↑↓** | elevation / charge, **Shift** for coarse |
+| **[** **]** | previous / next mount to lay |
+| **Enter** | confirm this gun, move to the next |
+| **F** | fire the volley · **Space** triggers mid-flight tricks |
+| **B** / **C** | armory / campaign map · **Esc** closes · **R** restart · **M** mute |
 
 ## Design notes
 

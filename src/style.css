@@ -612,3 +612,54 @@ kbd {
   outline-offset: 2px;
   border-radius: 12px;
 }
+
+
+/* ---------- shield placement ---------- */
+
+.arming-split { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+.arming-left { min-width: 0; }
+.shield-head {
+  margin: 0 0 8px; font-size: 11px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--gold);
+}
+.shield-head i {
+  font-style: normal; letter-spacing: .04em; text-transform: none;
+  color: var(--ink-dim); font-weight: 400; margin-left: 6px;
+}
+.shield-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.shield-cell {
+  position: relative;
+  aspect-ratio: 1 / .72;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 4px;
+  border-radius: 9px;
+  background: #26170f;
+  border: 1px solid var(--line);
+  color: var(--ink); font: inherit;
+  cursor: pointer;
+  transition: border-color .14s ease, background .14s ease;
+}
+.shield-cell:hover { background: #331f14; }
+.shield-cell.weak { border-color: #a8412c; background: #33150f; }
+.shield-cell.weak::after {
+  content: "!"; position: absolute; top: 3px; right: 6px;
+  font-size: 10px; font-weight: 700; color: #ff8a5c;
+}
+.shield-cell.has-plate { border-color: #9a8b74; }
+.shield-cell.has-screen { border-color: #6aa8cc; }
+.sc-icon { font-size: 15px; line-height: 1; min-height: 15px; }
+.sc-name { font-size: 8.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-dim); text-align: center; }
+.sc-bar { display: block; width: 78%; height: 3px; border-radius: 2px; background: rgba(0,0,0,.45); overflow: hidden; }
+.sc-bar > i { display: block; height: 100%; background: var(--good); }
+.shield-cell.has-plate .sc-bar > i { background: #c9a58a; }
+.shield-cell.has-screen .sc-bar > i { background: #8fd0ff; }
+
+.shield-stock { display: flex; gap: 8px; margin-top: 9px; }
+.stock-chip {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  background: #2b1b16; border: 1px solid var(--line); color: var(--ink-dim);
+}
+.stock-chip b { color: var(--ink); }
+.shield-note { margin: 9px 0 0; font-size: 10.5px; line-height: 1.45; color: #8a7264; }
+
+@media (max-width: 780px) { .arming-split { grid-template-columns: 1fr; } }
