@@ -6,7 +6,21 @@ const UI = (() => {
 
   let game = null;
   let progress = { stars: {}, best: {}, faction: 'red', credits: 0,
-                   owned: [STARTING_WEAPON], modules: [] };
+                   owned: { [STARTING_WEAPON]: 1 }, modules: [] };
+
+  /* Saves from before multiples stored a plain array of types. Fold either
+     shape into counts so an old save still loads. */
+  function normaliseOwned(raw) {
+    const counts = {};
+    if (Array.isArray(raw)) for (const t of raw) { if (WEAPONS[t]) counts[t] = (counts[t] || 0) + 1; }
+    else if (raw && typeof raw === 'object') {
+      for (const [t, n] of Object.entries(raw)) {
+        if (WEAPONS[t] && n > 0) counts[t] = Math.min(MAX_COPIES, Math.floor(n));
+      }
+    }
+    if (!Object.keys(counts).length) counts[STARTING_WEAPON] = 1;
+    return counts;
+  }
 
   function loadProgress() {
     try {
@@ -18,11 +32,10 @@ const UI = (() => {
           best: p.best || {},
           faction: FACTIONS[p.faction] ? p.faction : 'red',
           credits: Number(p.credits) || 0,
-          owned: Array.isArray(p.owned) && p.owned.length
-            ? p.owned.filter((w) => WEAPONS[w]) : [STARTING_WEAPON],
+          owned: normaliseOwned(p.owned),
           modules: Array.isArray(p.modules) ? p.modules.filter((m) => MODULES[m]) : [],
         };
-        if (!progress.owned.includes(STARTING_WEAPON)) progress.owned.push(STARTING_WEAPON);
+        if (!progress.owned[STARTING_WEAPON]) progress.owned[STARTING_WEAPON] = 1;
       }
     } catch (e) { /* private mode — play without saving */ }
   }
@@ -70,7 +83,7 @@ const UI = (() => {
       const armed = s.armed || [];
       const mounts = s.owned.map((w) => {
         const on = armed.includes(w);
-        const spec = WEAPONS[w];
+        const spec = mountSpec(w);
         const affordable = on || (s.armedLoad + spec.firepower <= s.firepower);
         return `<button class="ammo${on ? ' current' : ''}${affordable ? '' : ' over'}" ` +
           `data-weapon="${w}" title="${spec.name} — ${spec.firepower} firepower — ${spec.behaviour}">` +
@@ -103,7 +116,7 @@ const UI = (() => {
     // which gun are we laying, and the fire bar that goes with it
     const laying = s.state === 'aim' && s.armed && s.armed.length;
     $('ro-mount').textContent = laying
-      ? `${s.aimIndex + 1}/${s.armed.length} ${WEAPONS[s.currentMount].name}` : '—';
+      ? `${s.aimIndex + 1}/${s.armed.length} ${mountSpec(s.currentMount).name}` : '—';
     const fb = $('firebar');
     fb.classList.toggle('hidden', !laying);
     if (laying) {
@@ -112,8 +125,8 @@ const UI = (() => {
         hud._msig = msig;
         $('firebar-mounts').innerHTML = s.armed.map((w, i) =>
           `<button class="fb-mount${i === s.aimIndex ? ' active' : ''}" data-mount="${w}"` +
-          ` title="${WEAPONS[w].name}" style="--tracer:${WEAPONS[w].tracer}">` +
-          `${WEAPONS[w].icon}</button>`).join('');
+          ` title="${mountSpec(w).name}" style="--tracer:${mountSpec(w).tracer}">` +
+          `${mountSpec(w).icon}</button>`).join('');
         $('firebar-mounts').querySelectorAll('[data-mount]').forEach((b) => {
           b.onclick = () => game.aimMount(b.dataset.mount);
         });
@@ -201,7 +214,9 @@ const UI = (() => {
     const grid = $('arming-grid');
     grid.innerHTML = '';
     game.owned.forEach((id, i) => {
-      const w = WEAPONS[id];
+      const w = mountSpec(id);
+      const copies = game.ownedCounts[mountType(id)] || 1;
+      const nth = copies > 1 ? ` ${Number(id.split('#')[1]) + 1}` : '';
       const on = game.armed.includes(id);
       const affordable = on || game.canArm(id);
       const el = document.createElement('button');
@@ -210,7 +225,7 @@ const UI = (() => {
         `<span class="arm-key">${i + 1}</span>` +
         `<span class="arm-icon" style="color:${w.tracer}">${w.icon}</span>` +
         `<span class="arm-body">` +
-          `<b>${w.name}</b>` +
+          `<b>${w.name}${nth}</b>` +
           `<i>${w.behaviour}</i>` +
           `<em>${w.damage} dmg${w.salvo ? ` ×${w.salvo.count}` : ''} · ${w.blast} blast · ${w.dig} dig</em>` +
         `</span>` +
@@ -280,8 +295,8 @@ const UI = (() => {
       shop.appendChild(h);
     };
 
-    section('Mounts', 'every mount fires each turn');
-    weaponList().forEach((id) => card(shop, id, WEAPONS[id], progress.owned.includes(id), buy));
+    section('Mounts', 'arm what you can power each turn — buy more than one of any gun');
+    weaponList().forEach((id) => mountCard(shop, id));
 
     for (const kind of MODULE_KINDS) {
       const ids = moduleList().filter((m) => MODULES[m].kind === kind.id);
@@ -339,11 +354,41 @@ const UI = (() => {
     $('hud-credits').textContent = fmt(progress.credits);
   }
 
-  function buy(id) {
+  /* A mount card shows how many you already have and what the next copy
+     costs; repeat copies get dearer so the cheapest gun cannot simply be
+     stacked. */
+  function mountCard(shop, id) {
     const w = WEAPONS[id];
-    if (progress.owned.includes(id) || progress.credits < w.cost) return;
-    progress.credits -= w.cost;
-    progress.owned.push(id);
+    const have = progress.owned[id] || 0;
+    const maxed = have >= MAX_COPIES;
+    const price = copyCost(id, have);
+    const affordable = !maxed && progress.credits >= price;
+
+    const el = document.createElement('div');
+    el.className = 'shop-card' + (have ? ' owned' : '') + (affordable || maxed ? '' : ' locked');
+    el.innerHTML =
+      `<span class="shop-icon">${w.icon}${have > 1 ? `<i class="copies">×${have}</i>` : ''}</span>` +
+      `<div class="shop-body">` +
+        `<span class="shop-name">${w.name}${have ? ` <b class="have">×${have}</b>` : ''}</span>` +
+        `<span class="shop-blurb">${w.blurb}</span>` +
+        `<span class="shop-stats"><em>${w.behaviour}</em> · ${w.damage} dmg` +
+          `${w.salvo ? ` ×${w.salvo.count}` : ''} · ${w.firepower} fp</span>` +
+      `</div>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn tiny ' + (affordable ? 'primary' : 'ghost');
+    btn.textContent = maxed ? 'Max' : have ? `+1 · ${fmt(price)} cr` : `${fmt(price)} cr`;
+    btn.disabled = !affordable;
+    btn.onclick = () => buy(id);
+    el.appendChild(btn);
+    shop.appendChild(el);
+  }
+
+  function buy(id) {
+    const have = progress.owned[id] || 0;
+    const price = copyCost(id, have);
+    if (have >= MAX_COPIES || progress.credits < price) return;
+    progress.credits -= price;
+    progress.owned[id] = have + 1;
     saveProgress();
     game.setLoadout(progress.owned);
     Sfx.star(1);
@@ -513,7 +558,7 @@ const UI = (() => {
     $('btn-wipe').onclick = () => {
       if (!confirm('Reset stars, scores, credits, mounts and modules?')) return;
       progress = { stars: {}, best: {}, faction: progress.faction, credits: 0,
-                   owned: [STARTING_WEAPON], modules: [] };
+                   owned: { [STARTING_WEAPON]: 1 }, modules: [] };
       saveProgress();
       game.setLoadout(progress.owned);
       game.setModules(progress.modules);

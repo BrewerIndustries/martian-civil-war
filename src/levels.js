@@ -33,7 +33,12 @@ const otherFaction = (id) => (id === 'red' ? 'green' : 'red');
    reaches, `damage` what a dead-centre hit does to a platform's 100 hull. */
 const WEAPONS = {
   /* Every mount flies differently, not just for different numbers:
-       gravityScale  0 = dead straight, 1 = a normal ballistic arc
+       gravityScale  0 = dead straight, 1 = a normal ballistic arc. This is
+                     where a mount's CHARACTER lives — a heavy shell lobs and
+                     drops. `speed` is not character: it decides whether the
+                     mount can cross the field at all, and every one of them
+                     must be able to, or fire control clamps it at full charge
+                     and it simply falls short forever.
        windScale     how much the gale pushes it around
        range         px of flight before it fizzles (0 = until it hits something)
        salvo         several shells per trigger pull; `spread` fans them by
@@ -41,7 +46,7 @@ const WEAPONS = {
        penetrate     px of solid rock it will bore through instead of stopping
        ability       what Space does to it mid-flight */
   laser: {
-    icon: '⚡', name: 'Laser Cannon', cost: 0, order: 0, firepower: 18,
+    icon: '⚡', name: 'Laser Cannon', cost: 0, order: 0, firepower: 24,
     r: 7, speed: 1.14, damage: 30, blast: 46, dig: 36, drag: 0.0006,
     gravityScale: 1, windScale: 1, ability: null, tracer: '#7fe8ff',
     behaviour: 'Standard arc',
@@ -56,7 +61,7 @@ const WEAPONS = {
   },
   fusion: {
     icon: '✸', name: 'Fusion Charge', cost: 22000, order: 2, firepower: 34,
-    r: 10, speed: 0.96, damage: 46, blast: 98, dig: 86, drag: 0.0011,
+    r: 10, speed: 1.10, damage: 46, blast: 98, dig: 86, drag: 0.0011,
     gravityScale: 1.15, windScale: 0.7, ability: 'detonate', tracer: '#9fd93a',
     behaviour: 'Heavy, drops fast',
     blurb: 'Space detonates it early. Enormous crater — the tunneller’s pick.',
@@ -94,7 +99,7 @@ const WEAPONS = {
   },
   barrage: {
     icon: '∴', name: 'Barrage Mortar', cost: 66000, order: 12, firepower: 40,
-    r: 8, speed: 0.98, damage: 22, blast: 54, dig: 46, drag: 0.0010,
+    r: 8, speed: 1.09, damage: 22, blast: 54, dig: 46, drag: 0.0010,
     gravityScale: 1.1, windScale: 0.9, ability: 'detonate', tracer: '#ffb04a',
     salvo: { count: 4, spread: 0.8, stagger: 0.055 },
     behaviour: '4 shells, walking',
@@ -110,7 +115,7 @@ const WEAPONS = {
   },
   thermite: {
     icon: '⧫', name: 'Thermite Charge', cost: 40000, order: 6, firepower: 30,
-    r: 9, speed: 0.94, damage: 16, blast: 62, dig: 132, drag: 0.0011,
+    r: 9, speed: 1.10, damage: 16, blast: 62, dig: 132, drag: 0.0011,
     gravityScale: 1.1, windScale: 0.8, ability: 'detonate', tracer: '#ff9a3c',
     behaviour: 'Enormous crater',
     blurb: 'Burns a hole out of all proportion to its bite. The tunneller\'s tool of choice.',
@@ -133,7 +138,7 @@ const WEAPONS = {
   },
   emp: {
     icon: '≋', name: 'EMP Burst', cost: 56000, order: 9, firepower: 34,
-    r: 8, speed: 1.0, damage: 12, blast: 150, dig: 8, drag: 0.0009,
+    r: 8, speed: 1.07, damage: 12, blast: 150, dig: 8, drag: 0.0009,
     gravityScale: 1, windScale: 1, ability: 'detonate', tracer: '#7fe8ff',
     emp: 0.45,
     behaviour: 'Cuts their power',
@@ -141,22 +146,22 @@ const WEAPONS = {
   },
   mirv: {
     icon: '❋', name: 'MIRV Cluster', cost: 88000, order: 13, firepower: 50,
-    r: 9, speed: 1.0, damage: 20, blast: 46, dig: 34, drag: 0.0008,
+    r: 9, speed: 1.07, damage: 20, blast: 46, dig: 34, drag: 0.0008,
     gravityScale: 1, windScale: 1, ability: 'split', splitCount: 5,
     splitFan: 4, splitSpeed: 0.13, autoAbility: true, tracer: '#d8a8f0',
     behaviour: 'Splits into 5',
     blurb: 'Five independent warheads off one launch. Bursts on the climb; Space bursts it early to tighten the pattern.',
   },
   howitzer: {
-    icon: '◆', name: 'Siege Howitzer', cost: 96000, order: 14, firepower: 54,
-    r: 12, speed: 0.9, damage: 82, blast: 88, dig: 78, drag: 0.0013,
+    icon: '◆', name: 'Siege Howitzer', cost: 96000, order: 14, firepower: 46,
+    r: 12, speed: 1.17, damage: 82, blast: 88, dig: 78, drag: 0.0013,
     gravityScale: 1.2, windScale: 0.7, ability: 'detonate', tracer: '#ff7a4a',
     behaviour: 'One enormous shell',
     blurb: 'The heaviest single round on the platform. Slow, steep, and it ends arguments.',
   },
   singularity: {
-    icon: '◍', name: 'Singularity', cost: 110000, order: 15, firepower: 48,
-    r: 9, speed: 0.95, damage: 34, blast: 155, dig: 145, drag: 0.0012,
+    icon: '◍', name: 'Singularity', cost: 110000, order: 15, firepower: 44,
+    r: 9, speed: 1.09, damage: 34, blast: 155, dig: 145, drag: 0.0012,
     gravityScale: 1, windScale: 1, ability: 'implode', tracer: '#c9a0ff',
     behaviour: 'Collapses a well',
     blurb: 'Collapses a well. Removes a great deal of landscape at once.',
@@ -272,6 +277,28 @@ const SHIELDS = {
 };
 
 const STARTING_WEAPON = 'laser';
+
+/* You can bolt on more than one of a given gun. A mount is therefore an
+   INSTANCE, keyed "type#n", not just a weapon type: each copy costs its own
+   firepower to arm and is laid with its own firing solution.
+
+   Repeat copies cost more, and the free starter has a floor price, or a rack
+   of eight free Laser Cannons would be the obvious dominant build. */
+/* Firepower is what stops a rack of the cheapest gun being the answer to
+   everything. The free Laser Cannon is deliberately the LEAST efficient thing
+   per point of firepower — it costs nothing in credits, so it should not also
+   be the best use of the power bus. Expensive heavy mounts earn their price by
+   being worth more per point. */
+const MAX_COPIES = 4;
+const copyCost = (type, have) =>
+  have === 0 ? WEAPONS[type].cost
+             : Math.round(Math.max(8000, WEAPONS[type].cost) * (1 + 0.6 * have));
+
+const mountType = (key) => String(key).split('#')[0];
+const mountSpec = (key) => WEAPONS[mountType(key)];
+// expand {laser:2, fusion:1} into ['laser#0','laser#1','fusion#0'], in shop order
+const expandMounts = (counts) => weaponList().flatMap((t) =>
+  Array.from({ length: counts[t] || 0 }, (_, i) => `${t}#${i}`));
 const weaponList = () => Object.keys(WEAPONS).sort((a, b) => WEAPONS[a].order - WEAPONS[b].order);
 
 const PLATFORM = {

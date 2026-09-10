@@ -663,3 +663,14 @@ kbd {
 .shield-note { margin: 9px 0 0; font-size: 10.5px; line-height: 1.45; color: #8a7264; }
 
 @media (max-width: 780px) { .arming-split { grid-template-columns: 1fr; } }
+
+
+/* owning more than one of a gun */
+.shop-icon { position: relative; }
+.shop-icon .copies {
+  position: absolute; bottom: -3px; right: -6px;
+  font-style: normal; font-size: 9px; font-weight: 700;
+  padding: 1px 4px; border-radius: 7px;
+  background: var(--gold); color: #241409;
+}
+.shop-name .have { color: var(--gold); font-size: 12px; }

@@ -67,6 +67,12 @@ the campaign map, **M** mutes.
   then fitted for every battle after. Mounts cost **firepower** to arm, and the
   platform can only power so much per volley, so owning more is about having
   the right tool available rather than firing everything at once.
+- **Buy more than one of any gun**, up to four. Each copy is a separate mount:
+  it costs its own firepower to arm and is laid with its own firing solution,
+  so three Rail Spikes are three guns you aim independently. Repeat copies get
+  dearer, and the free Laser Cannon is deliberately the least firepower-
+  efficient mount in the game — it costs nothing in credits, so it should not
+  also be the best use of the power bus.
 
   | Mount | Cost | fp | Behaviour |
   |---|---|---|---|
@@ -252,6 +258,14 @@ Things that are the way they are on purpose:
   ground the set of shots that reach you can be a narrow needle; a coarse grid
   found it only by luck, which made the difficulty setting meaningless on some
   maps. A poor gunner is now a good gunner with shaky hands.
+- **Every mount must be able to cross the field.** Fire control ranges against
+  a notional standard mount, and anything slower simply clamps at full charge
+  and falls short forever. Six mounts were in that state, including a
+  96,000-credit Siege Howitzer that topped out at 997px on a field 1,380px
+  wide — it could not reach the enemy at any angle, which is why a howitzer
+  build lost every game. A mount's character lives in its `gravityScale` (a
+  heavy shell still lobs and drops); `speed` only decides whether it can make
+  the distance, and now all of them can.
 - **Fire control converges the volley.** Every mount fires on one firing
   solution but each flies differently, so at first adding mounts just scattered
   more of the volley into the dirt — a lone accurate gun beat a full arsenal

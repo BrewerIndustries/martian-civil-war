@@ -336,7 +336,7 @@ const R = (() => {
     // one barrel per mount, ranged up the face of the building
     const n = roster.length;
     roster.forEach((id, i) => {
-      const w = WEAPONS[id];
+      const w = isPlayer ? mountSpec(id) : WEAPONS[id];
       if (!w) return;
       const t = n === 1 ? 0.5 : i / (n - 1);
       const my = -30 - 12 - t * (storeys * storeyH - 16);
@@ -497,9 +497,10 @@ const R = (() => {
     const full = game.mods.fullArc;
     const marker = game.mods.impactMarker || full;
 
-    game.armed.forEach((id, idx) => {
-      const w = WEAPONS[id];
-      const sol = game._sol(id);
+    game.armed.forEach((key, idx) => {
+      const w = mountSpec(key);
+      const type = mountType(key);
+      const sol = game._sol(key);
       const active = id === game.currentMount;
       const salvo = w.salvo;
       const count = salvo ? salvo.count : 1;
@@ -508,7 +509,7 @@ const R = (() => {
         const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;
         const prev = game.aimPreview(
           sol.angle + t * (salvo ? salvo.spread : 0),
-          sol.power + t * (salvo ? salvo.stagger : 0) / 2, id, full);
+          sol.power + t * (salvo ? salvo.stagger : 0) / 2, type, full);
         if (!prev || prev.points.length < 2) continue;
         const pts = prev.points;
         const hue = prev.blocked ? '#ff8a5c' : (w.tracer || '#ffe0a0');
@@ -554,7 +555,9 @@ const R = (() => {
         ctx.fillStyle = w.tracer;
         ctx.font = 'bold 11px "Trebuchet MS", sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText(`${idx + 1}/${game.armed.length} ${w.name}`, o.x + 12, o.y - 12);
+        const copies = game.armed.filter((k) => mountType(k) === type).length;
+        const nth = copies > 1 ? ` ${Number(key.split('#')[1]) + 1}` : '';
+        ctx.fillText(`${idx + 1}/${game.armed.length} ${w.name}${nth}`, o.x + 12, o.y - 12);
         ctx.restore();
       }
     });

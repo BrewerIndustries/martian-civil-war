@@ -102,9 +102,9 @@ class Game {
 
   fireAll() {
     if (this.state !== 'aim' || !this.armed.length) return;
-    for (const id of this.armed) {
-      const sol = this._sol(id);
-      this._launch(this.player, sol.angle, sol.power, id);
+    for (const key of this.armed) {
+      const sol = this._sol(key);
+      this._launch(this.player, sol.angle, sol.power, mountType(key));
     }
     this.player.recoil = 1;
     this.lastShooter = this.player;
@@ -121,11 +121,21 @@ class Game {
   get house() { return FACTIONS[this.faction]; }
   get enemyHouse() { return FACTIONS[otherFaction(this.faction)]; }
 
+  /* Takes either a counts object ({laser: 2, fusion: 1}) or a legacy array of
+     weapon types, and expands it into ordered mount INSTANCES so two of the
+     same gun are two separate mounts. */
   setLoadout(owned) {
-    // Ordered so the broadside always launches in the same sequence.
-    const list = owned && owned.length ? owned.slice() : [STARTING_WEAPON];
-    this.owned = weaponList().filter((w) => list.includes(w));
-    if (!this.owned.length) this.owned = [STARTING_WEAPON];
+    let counts = {};
+    if (Array.isArray(owned)) for (const t of owned) counts[t] = (counts[t] || 0) + 1;
+    else if (owned && typeof owned === 'object') counts = { ...owned };
+    if (!Object.values(counts).some((n) => n > 0)) counts = { [STARTING_WEAPON]: 1 };
+
+    this.ownedCounts = counts;
+    this.owned = expandMounts(counts);
+    if (!this.owned.length) {
+      this.ownedCounts = { [STARTING_WEAPON]: 1 };
+      this.owned = expandMounts(this.ownedCounts);
+    }
     this._refitArmed();
     this._emitHud();
   }
@@ -137,11 +147,11 @@ class Game {
 
   get firepower() { return PLATFORM.firepower + this.mods.firepower; }
   get armedLoad() {
-    return this.armed.reduce((n, id) => n + (WEAPONS[id] ? WEAPONS[id].firepower : 0), 0);
+    return this.armed.reduce((n, key) => n + (mountSpec(key) ? mountSpec(key).firepower : 0), 0);
   }
-  canArm(id) {
-    const w = WEAPONS[id];
-    return !!w && this.owned.includes(id) &&
+  canArm(key) {
+    const w = mountSpec(key);
+    return !!w && this.owned.includes(key) &&
            this.armedLoad + w.firepower <= this.firepower;
   }
 
@@ -152,7 +162,7 @@ class Game {
       this.armed = this.armed.filter((w) => w !== id);
       Sfx.click();
     } else if (this.canArm(id)) {
-      this.armed = weaponList().filter((w) => this.armed.includes(w) || w === id);
+      this.armed = this.owned.filter((w) => this.armed.includes(w) || w === id);
       Sfx.click();
     } else {
       Sfx.thud(0.4);          // over budget — nothing to arm it with
@@ -166,16 +176,15 @@ class Game {
   _refitArmed() {
     const keep = [];
     let load = 0;
-    for (const id of weaponList()) {
-      if (!this.owned.includes(id) || !this.armed.includes(id)) continue;
-      const w = WEAPONS[id];
-      if (load + w.firepower <= this.firepower) { keep.push(id); load += w.firepower; }
+    for (const key of this.owned) {
+      if (!this.armed.includes(key)) continue;
+      const w = mountSpec(key);
+      if (load + w.firepower <= this.firepower) { keep.push(key); load += w.firepower; }
     }
     if (!keep.length) {
-      for (const id of weaponList()) {
-        if (!this.owned.includes(id)) continue;
-        const w = WEAPONS[id];
-        if (load + w.firepower <= this.firepower) { keep.push(id); load += w.firepower; }
+      for (const key of this.owned) {
+        const w = mountSpec(key);
+        if (load + w.firepower <= this.firepower) { keep.push(key); load += w.firepower; }
       }
     }
     this.armed = keep;
@@ -559,12 +568,12 @@ class Game {
   }
 
   trimPower(weaponId, angle, power) {
-    const w = WEAPONS[weaponId];
+    const w = WEAPONS[mountType(weaponId)];
     if (!w) return power;
     const gs = w.gravityScale ?? 1;
     if (gs <= 0) return power;
 
-    const key = `${weaponId}|${angle.toFixed(1)}|${power.toFixed(3)}|${this.wind.toFixed(3)}`;
+    const key = `${mountType(weaponId)}|${angle.toFixed(1)}|${power.toFixed(3)}|${this.wind.toFixed(3)}`;
     this._trimCache = this._trimCache || new Map();
     if (this._trimCache.has(key)) return this._trimCache.get(key);
 
@@ -792,12 +801,13 @@ class Game {
   aimPreview(angleOverride, powerOverride, weaponId, fullArc) {
     const pl = this.player;
     if (!pl || pl.hp <= 0) return null;
-    const w = WEAPONS[weaponId || this.owned[0]];
+    const type = mountType(weaponId || this.owned[0]);
+    const w = WEAPONS[type];
     if (!w) return null;
     const angle = angleOverride === undefined ? this.aimAngle : angleOverride;
     const raw = powerOverride === undefined ? this.aimPower : powerOverride;
     // preview through the same fire control the guns use, or it lies
-    const power = clamp(this.trimPower(weaponId || this.owned[0], angle, raw), 0.02, 1);
+    const power = clamp(this.trimPower(type, angle, raw), 0.02, 1);
     const a = angle * Math.PI / 180;
     const speed = power * MAX_SPEED * w.speed;
     const o = this.muzzle(pl, this.aimAngle);
@@ -805,7 +815,7 @@ class Game {
     const ghost = {
       x: o.x, y: o.y,
       vx: Math.cos(a) * speed * pl.facing, vy: -Math.sin(a) * speed,
-      weapon: weaponId || this.owned[0], owner: pl, bore: w.penetrate || 0, life: 0, travelled: 0,
+      weapon: type, owner: pl, bore: w.penetrate || 0, life: 0, travelled: 0,
     };
 
     /* A direct-fire beam has no apex to stop at, and hiding its path would be
@@ -1119,6 +1129,7 @@ class Game {
       turns: this.turns,
       player: this.player ? { hp: this.player.hp, max: this.player.maxHp } : null,
       foe: this.foe ? { hp: this.foe.hp, max: this.foe.maxHp } : null,
+      ownedCounts: this.ownedCounts,
       canAbility: this.state === 'flight' && !this.abilityUsed &&
         this.shells.some((s) => s.owner === this.player &&
                                 WEAPONS[s.weapon].ability && !s.burst),
