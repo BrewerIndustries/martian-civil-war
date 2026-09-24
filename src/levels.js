@@ -33,7 +33,12 @@ const otherFaction = (id) => (id === 'red' ? 'green' : 'red');
    reaches, `damage` what a dead-centre hit does to a platform's 100 hull. */
 const WEAPONS = {
   /* Every mount flies differently, not just for different numbers:
-       gravityScale  0 = dead straight, 1 = a normal ballistic arc
+       gravityScale  0 = dead straight, 1 = a normal ballistic arc. This is
+                     where a mount's CHARACTER lives — a heavy shell lobs and
+                     drops. `speed` is not character: it decides whether the
+                     mount can cross the field at all, and every one of them
+                     must be able to, or fire control clamps it at full charge
+                     and it simply falls short forever.
        windScale     how much the gale pushes it around
        range         px of flight before it fizzles (0 = until it hits something)
        salvo         several shells per trigger pull; `spread` fans them by
@@ -41,7 +46,7 @@ const WEAPONS = {
        penetrate     px of solid rock it will bore through instead of stopping
        ability       what Space does to it mid-flight */
   laser: {
-    icon: '⚡', name: 'Laser Cannon', cost: 0, order: 0, firepower: 18,
+    icon: '⚡', name: 'Laser Cannon', cost: 0, order: 0, firepower: 24,
     r: 7, speed: 1.14, damage: 30, blast: 46, dig: 36, drag: 0.0006,
     gravityScale: 1, windScale: 1, ability: null, tracer: '#7fe8ff',
     behaviour: 'Standard arc',
@@ -56,7 +61,7 @@ const WEAPONS = {
   },
   fusion: {
     icon: '✸', name: 'Fusion Charge', cost: 22000, order: 2, firepower: 34,
-    r: 10, speed: 0.96, damage: 46, blast: 98, dig: 86, drag: 0.0011,
+    r: 10, speed: 1.10, damage: 46, blast: 98, dig: 86, drag: 0.0011,
     gravityScale: 1.15, windScale: 0.7, ability: 'detonate', tracer: '#9fd93a',
     behaviour: 'Heavy, drops fast',
     blurb: 'Space detonates it early. Enormous crater — the tunneller’s pick.',
@@ -70,7 +75,7 @@ const WEAPONS = {
     blurb: 'Three bolts per launch in a tight fan. Forgiving when your line is good but your range is not.',
   },
   rail: {
-    icon: '⌁', name: 'Rail Spike', cost: 38000, order: 4, firepower: 34,
+    icon: '⌁', name: 'Rail Spike', cost: 38000, order: 5, firepower: 34,
     r: 5, speed: 1.12, damage: 58, blast: 34, dig: 20, drag: 0.0003,
     gravityScale: 0.72, windScale: 0.3, ability: 'dive', penetrate: 340,
     tracer: '#ffd166',
@@ -78,7 +83,7 @@ const WEAPONS = {
     blurb: 'Flat, heavy and unbothered by wind. Bores clean through rock instead of stopping at it.',
   },
   ion: {
-    icon: '⌖', name: 'Ion Lance', cost: 46000, order: 5, firepower: 30,
+    icon: '⌖', name: 'Ion Lance', cost: 46000, order: 7, firepower: 30,
     r: 5, speed: 1.85, damage: 44, blast: 30, dig: 24, drag: 0,
     gravityScale: 0, windScale: 0, range: 1000, ability: null,
     tracer: '#a8f0ff',
@@ -86,23 +91,77 @@ const WEAPONS = {
     blurb: 'Ignores gravity and wind entirely — but it cannot arc over anything, and the beam dissipates at range. Deadly down a tunnel you have already bored.',
   },
   seeker: {
-    icon: '◈', name: 'Seeker Drone', cost: 58000, order: 6, firepower: 38,
+    icon: '◈', name: 'Seeker Drone', cost: 58000, order: 10, firepower: 38,
     r: 8, speed: 1.00, damage: 40, blast: 60, dig: 48, drag: 0.0008,
     gravityScale: 0.9, windScale: 0.8, ability: 'seek', tracer: '#8fd0ff',
     behaviour: 'Homes on command',
     blurb: 'Space locks it onto the enemy platform. It will find its own way in.',
   },
   barrage: {
-    icon: '∴', name: 'Barrage Mortar', cost: 66000, order: 7, firepower: 40,
-    r: 8, speed: 0.98, damage: 22, blast: 54, dig: 46, drag: 0.0010,
+    icon: '∴', name: 'Barrage Mortar', cost: 66000, order: 12, firepower: 40,
+    r: 8, speed: 1.09, damage: 22, blast: 54, dig: 46, drag: 0.0010,
     gravityScale: 1.1, windScale: 0.9, ability: 'detonate', tracer: '#ffb04a',
     salvo: { count: 4, spread: 0.8, stagger: 0.055 },
     behaviour: '4 shells, walking',
     blurb: 'Four shells that walk out across the ground. Finds range and digs a trench doing it.',
   },
+  flak: {
+    icon: '⁙', name: 'Flak Battery', cost: 34000, order: 4, firepower: 32,
+    r: 5, speed: 1.06, damage: 11, blast: 34, dig: 20, drag: 0.0008,
+    gravityScale: 1, windScale: 1.2, ability: null, tracer: '#ffd166',
+    salvo: { count: 5, spread: 6.5, stagger: 0.02 },
+    behaviour: '5 shells, wide fan',
+    blurb: 'Five light shells in a broad fan. Poor against a hard point, excellent at making a mess of a hillside.',
+  },
+  thermite: {
+    icon: '⧫', name: 'Thermite Charge', cost: 40000, order: 6, firepower: 30,
+    r: 9, speed: 1.10, damage: 16, blast: 62, dig: 132, drag: 0.0011,
+    gravityScale: 1.1, windScale: 0.8, ability: 'detonate', tracer: '#ff9a3c',
+    behaviour: 'Enormous crater',
+    blurb: 'Burns a hole out of all proportion to its bite. The tunneller\'s tool of choice.',
+  },
+  buster: {
+    icon: '⤓', name: 'Bunker Buster', cost: 62000, order: 11, firepower: 44,
+    r: 7, speed: 1.08, damage: 52, blast: 104, dig: 74, drag: 0.0005,
+    gravityScale: 0.85, windScale: 0.5, ability: 'dive', penetrate: 180,
+    tracer: '#e0a0ff',
+    behaviour: 'Digs in, then detonates',
+    blurb: 'Drives into rock before it goes off, so it wrecks what is sheltering behind the hill rather than the hill.',
+  },
+  gauss: {
+    icon: '⋮', name: 'Gauss Repeater', cost: 48000, order: 8, firepower: 36,
+    r: 4, speed: 1.22, damage: 13, blast: 26, dig: 16, drag: 0.0004,
+    gravityScale: 0.9, windScale: 0.6, ability: null, tracer: '#a8f0ff',
+    salvo: { count: 6, spread: 1.1, stagger: 0.035 },
+    behaviour: '6 shells, walking',
+    blurb: 'Six flat rounds that walk across the target. Chews through a hull that is already open.',
+  },
+  emp: {
+    icon: '≋', name: 'EMP Burst', cost: 56000, order: 9, firepower: 34,
+    r: 8, speed: 1.07, damage: 12, blast: 150, dig: 8, drag: 0.0009,
+    gravityScale: 1, windScale: 1, ability: 'detonate', tracer: '#7fe8ff',
+    emp: 0.45,
+    behaviour: 'Cuts their power',
+    blurb: 'Barely scratches the hull, but a hit knocks 45% off what the enemy can power in their next volley.',
+  },
+  mirv: {
+    icon: '❋', name: 'MIRV Cluster', cost: 88000, order: 13, firepower: 50,
+    r: 9, speed: 1.07, damage: 20, blast: 46, dig: 34, drag: 0.0008,
+    gravityScale: 1, windScale: 1, ability: 'split', splitCount: 5,
+    splitFan: 4, splitSpeed: 0.13, autoAbility: true, tracer: '#d8a8f0',
+    behaviour: 'Splits into 5',
+    blurb: 'Five independent warheads off one launch. Bursts on the climb; Space bursts it early to tighten the pattern.',
+  },
+  howitzer: {
+    icon: '◆', name: 'Siege Howitzer', cost: 96000, order: 14, firepower: 46,
+    r: 12, speed: 1.17, damage: 82, blast: 88, dig: 78, drag: 0.0013,
+    gravityScale: 1.2, windScale: 0.7, ability: 'detonate', tracer: '#ff7a4a',
+    behaviour: 'One enormous shell',
+    blurb: 'The heaviest single round on the platform. Slow, steep, and it ends arguments.',
+  },
   singularity: {
-    icon: '◍', name: 'Singularity', cost: 80000, order: 8, firepower: 46,
-    r: 9, speed: 0.95, damage: 34, blast: 155, dig: 145, drag: 0.0012,
+    icon: '◍', name: 'Singularity', cost: 110000, order: 15, firepower: 44,
+    r: 9, speed: 1.09, damage: 34, blast: 155, dig: 145, drag: 0.0012,
     gravityScale: 1, windScale: 1, ability: 'implode', tracer: '#c9a0ff',
     behaviour: 'Collapses a well',
     blurb: 'Collapses a well. Removes a great deal of landscape at once.',
@@ -116,71 +175,150 @@ const WEAPONS = {
    Kept deliberately modest. A duel where one side simply cannot be hurt is not
    a duel, so shields shave damage rather than negate it. */
 const MODULES = {
-  plating: {
-    kind: 'hull', icon: '▤', name: 'Ablative Plating', cost: 14000, order: 0,
-    hull: 70, blurb: 'Sacrificial layers across the face. +70 hull.',
-  },
-  frame: {
-    kind: 'hull', icon: '▩', name: 'Reinforced Frame', cost: 34000, order: 1,
-    hull: 150, blurb: 'Rebuilds the load-bearing structure. +150 hull.',
-  },
-  baffles: {
-    kind: 'shield', icon: '◫', name: 'Blast Baffles', cost: 18000, order: 2,
-    splashReduce: 0.45, blurb: 'Vents blast pressure around the hull. Near misses hurt 45% less.',
-  },
-  deflector: {
-    kind: 'shield', icon: '◉', name: 'Deflector Screen', cost: 26000, order: 3,
-    damageReduce: 0.15, blurb: 'A charged screen bleeds off 15% of everything that lands.',
-  },
-  gantry: {
-    kind: 'shield', icon: '✚', name: 'Repair Gantry', cost: 42000, order: 4,
-    regen: 14, blurb: 'Crews patch the structure between volleys. +14 hull each turn.',
-  },
-  reactor: {
-    kind: 'engine', icon: '⌬', name: 'Reactor Uprate', cost: 12000, order: 5,
-    fuel: 60, blurb: 'More power to the drives. +60 fuel every turn.',
-  },
-  capacitor: {
-    kind: 'power', icon: '⚡', name: 'Capacitor Bank', cost: 16000, order: 8,
-    firepower: 22, blurb: 'Dumps more charge into a single volley. +22 firepower.',
-  },
-  core: {
-    kind: 'power', icon: '◎', name: 'Fusion Core', cost: 44000, order: 9,
-    firepower: 46, blurb: 'A second reactor feeding the gun decks. +46 firepower.',
-  },
-  treads: {
-    kind: 'engine', icon: '⚙', name: 'Heavy Treads', cost: 20000, order: 6,
-    climb: 9, driveSpeed: 0.7, blurb: 'Climbs steeper ground and moves quicker over it.',
-  },
-  dampers: {
-    kind: 'engine', icon: '⩌', name: 'Inertial Dampers', cost: 16000, order: 7,
-    fallReduce: 0.65, blurb: 'Takes 65% less damage when the ground gives way under you.',
-  },
+  // --- hull: raw structure ---
+  plating:  { kind: 'hull', icon: '▤', name: 'Ablative Plating', cost: 14000, order: 0,
+              hull: 70, blurb: 'Sacrificial layers across the face.' },
+  ceramic:  { kind: 'hull', icon: '▦', name: 'Ceramic Composite', cost: 28000, order: 1,
+              hull: 120, blurb: 'Fired plate that shrugs off a glancing hit.' },
+  frame:    { kind: 'hull', icon: '▩', name: 'Reinforced Frame', cost: 46000, order: 2,
+              hull: 190, blurb: 'Rebuilds the load-bearing structure of the tower.' },
+  bulkhead: { kind: 'hull', icon: '▣', name: 'Redundant Bulkheads', cost: 78000, order: 3,
+              hull: 300, blurb: 'Compartmentalised: losing a floor no longer means losing the building.' },
+
+  // --- shields: what happens to damage that does land ---
+  reactive:  { kind: 'shield', icon: '◇', name: 'Reactive Armour', cost: 12000, order: 4,
+               damageReduce: 0.10, blurb: 'Charges that fire outward into an incoming shell.' },
+  baffles:   { kind: 'shield', icon: '◫', name: 'Blast Baffles', cost: 18000, order: 5,
+               splashReduce: 0.45, blurb: 'Vents blast pressure around the hull.' },
+  deflector: { kind: 'shield', icon: '◉', name: 'Deflector Screen', cost: 30000, order: 6,
+               damageReduce: 0.15, blurb: 'A charged screen bleeds off part of everything that lands.' },
+  lattice:   { kind: 'shield', icon: '⌘', name: 'Deflector Lattice', cost: 68000, order: 7,
+               damageReduce: 0.22, splashReduce: 0.2, blurb: 'A full-envelope screen. Expensive, and worth it.' },
+  gantry:    { kind: 'shield', icon: '✚', name: 'Repair Gantry', cost: 42000, order: 8,
+               regen: 14, blurb: 'Crews patch the structure between volleys.' },
+  nanoforge: { kind: 'shield', icon: '❖', name: 'Nanoforge', cost: 86000, order: 9,
+               regen: 34, blurb: 'Rebuilds plate faster than most guns can remove it.' },
+
+  // --- power: how much you can fire at once ---
+  capacitor:     { kind: 'power', icon: '⚡', name: 'Capacitor Bank', cost: 16000, order: 10,
+                   firepower: 22, blurb: 'Dumps more charge into a single volley.' },
+  superconductor:{ kind: 'power', icon: '⌁', name: 'Superconductor Bus', cost: 34000, order: 11,
+                   firepower: 30, blurb: 'Almost no loss between reactor and gun deck.' },
+  core:          { kind: 'power', icon: '◎', name: 'Fusion Core', cost: 44000, order: 12,
+                   firepower: 46, blurb: 'A second reactor feeding the gun decks.' },
+
+  // --- shield segments: the ones you place yourself ---
+  platerack: { kind: 'shieldkit', icon: '▬', name: 'Plate Rack', cost: 22000, order: 19,
+               plates: 2, blurb: 'Two more armour plates to hang on the frame.' },
+  emitters:  { kind: 'shieldkit', icon: '◟', name: 'Screen Emitters', cost: 30000, order: 20,
+               screens: 2, blurb: 'Two more energy screens, and they recharge between volleys.' },
+  grid:      { kind: 'shieldkit', icon: '⊞', name: 'Shield Grid', cost: 64000, order: 21,
+               plates: 2, screens: 2, blurb: 'A full lattice: two more of each kind.' },
+
+  // --- targeting: these upgrade what you can SEE, which is its own kind of power ---
+  rangefinder: { kind: 'targeting', icon: '⊹', name: 'Rangefinder', cost: 20000, order: 13,
+                 impactMarker: true,
+                 blurb: 'Marks where the mount you are aiming will actually come down.' },
+  ballistic:   { kind: 'targeting', icon: '⌗', name: 'Ballistic Computer', cost: 54000, order: 14,
+                 fullArc: true,
+                 blurb: 'Plots the whole trajectory to impact instead of stopping at the apex.' },
+  stabiliser:  { kind: 'targeting', icon: '⊙', name: 'Gyro Stabilisers', cost: 26000, order: 15,
+                 windResist: 0.6, blurb: 'Holds the shot steady: the gale moves your shells 60% less.' },
+  scanner:     { kind: 'targeting', icon: '⊚', name: 'Structural Scanner', cost: 38000, order: 16,
+                 scanner: true,
+                 blurb: 'Reads the enemy structure and marks its weak spots. They take double damage whether you can see them or not.' },
+
+  // --- drive ---
+  reactor: { kind: 'engine', icon: '⌬', name: 'Reactor Uprate', cost: 12000, order: 16,
+             fuel: 170, blurb: 'More power to the drives. Far more ground per turn.' },
+  treads:  { kind: 'engine', icon: '⚙', name: 'Heavy Treads', cost: 20000, order: 17,
+             climb: 11, driveSpeed: 1.1, blurb: 'Climbs steeper ground and moves quicker over it.' },
+  dampers: { kind: 'engine', icon: '⩌', name: 'Inertial Dampers', cost: 16000, order: 18,
+             fallReduce: 0.65, blurb: 'Takes far less damage when the ground gives way under you.' },
 };
 
 const MODULE_KINDS = [
   { id: 'hull', label: 'Hull' },
   { id: 'shield', label: 'Shields' },
+  { id: 'shieldkit', label: 'Shield Segments' },
   { id: 'power', label: 'Power' },
+  { id: 'targeting', label: 'Targeting' },
   { id: 'engine', label: 'Drive' },
 ];
 
 const moduleList = () => Object.keys(MODULES).sort((a, b) => MODULES[a].order - MODULES[b].order);
 
+/* ---------- structure zones, weak spots and shields ----------
+   A platform is a building, so where a shell lands on it matters. The face is
+   divided into a 3x3 grid; two of those zones are weak spots that take double
+   damage, rerolled each battle, and you fit shield segments over the grid to
+   cover what matters. Which is the whole point: hull modules are a flat
+   number, but a shield you place is a decision. */
+
+const ZONE_COLS = 3, ZONE_ROWS = 3, ZONE_COUNT = ZONE_COLS * ZONE_ROWS;
+
+// Flavour by row, so a weak spot reads as a part of the structure.
+const ZONE_NAMES = [
+  ['Spotting deck', 'Bridge', 'Signal mast'],
+  ['Magazine', 'Gun deck', 'Loading gear'],
+  ['Drive train', 'Reactor', 'Track housing'],
+];
+const WEAK_MULTIPLIER = 2.0;
+
+const SHIELDS = {
+  plate: {
+    id: 'plate', name: 'Armour Plate', icon: '▬', hp: 110,
+    blurb: 'Soaks damage until it is gone. It does not come back mid-battle.',
+  },
+  screen: {
+    id: 'screen', name: 'Energy Screen', icon: '◟', reduce: 0.55, charge: 130, recharge: 45,
+    blurb: 'Cuts damage in its zone by 55% and recharges between volleys — until it is overloaded.',
+  },
+};
+
 const STARTING_WEAPON = 'laser';
+
+/* You can bolt on more than one of a given gun. A mount is therefore an
+   INSTANCE, keyed "type#n", not just a weapon type: each copy costs its own
+   firepower to arm and is laid with its own firing solution.
+
+   Repeat copies cost more, and the free starter has a floor price, or a rack
+   of eight free Laser Cannons would be the obvious dominant build. */
+/* Firepower is what stops a rack of the cheapest gun being the answer to
+   everything. The free Laser Cannon is deliberately the LEAST efficient thing
+   per point of firepower — it costs nothing in credits, so it should not also
+   be the best use of the power bus. Expensive heavy mounts earn their price by
+   being worth more per point. */
+const MAX_COPIES = 4;
+const copyCost = (type, have) =>
+  have === 0 ? WEAPONS[type].cost
+             : Math.round(Math.max(8000, WEAPONS[type].cost) * (1 + 0.6 * have));
+
+const mountType = (key) => String(key).split('#')[0];
+const mountSpec = (key) => WEAPONS[mountType(key)];
+// expand {laser:2, fusion:1} into ['laser#0','laser#1','fusion#0'], in shop order
+const expandMounts = (counts) => weaponList().flatMap((t) =>
+  Array.from({ length: counts[t] || 0 }, (_, i) => `${t}#${i}`));
 const weaponList = () => Object.keys(WEAPONS).sort((a, b) => WEAPONS[a].order - WEAPONS[b].order);
 
 const PLATFORM = {
   storeys: 3,      // it is a building on wheels, not a tank
   hp: 100, w: 96, h: 112,   // hit box must cover the whole structure
+  // a fortress is dug in: far wider, so far easier to hit
+  fortW: 168, fortH: 150,
   /* Firepower is the per-volley budget. You own every mount you have bought,
      but the platform can only power so many of them at once, so each turn is a
      choice about what to bring to bear rather than "fire everything". This is
      what keeps a big arsenal interesting instead of merely additive. */
   firepower: 56,
-  fuel: 80,        // drive allowance, refilled at the start of each of your turns
-  climb: 13,       // tallest step the tracks can take, in px
-  speed: 1.5,      // px per physics step
+  /* Drive allowance, refilled each turn. Sized so a turn's fuel is a real
+     repositioning move: at 80 fuel the platform travelled 80px, less than its
+     own width on an 1800px field, which read as "driving is broken" rather
+     than "driving is limited". */
+  plates: 1, screens: 1,      // before any module: enough to make the choice real
+  fuel: 260,
+  climb: 15,       // tallest step the tracks can take, in px
+  speed: 2.4,      // px per physics step
 };
 
 /* ---------- the campaign ----------
@@ -213,7 +351,19 @@ const BATTLES = [
   { name: 'Deep Cut',           profile: 'canyon',  seed: 1188, amplitude: 380, skill: 0.79, wind: 0.09,
     tip: 'Long, low and exposed. Whoever ranges first wins.' },
   { name: "Warlord's Redoubt",  profile: 'ridge',   seed: 1291, amplitude: 430, skill: 0.85, wind: 0.10,
-    tip: 'Their best gunner, behind their best ground. Bring everything.' },
+    tip: 'Their best gunner, behind their best ground.' },
+  { name: 'The Salt Flats',     profile: 'plateau', seed: 1402, amplitude: 300, skill: 0.80, wind: 0.14,
+    tip: 'Open ground and a hard wind. Nowhere to hide on either side.' },
+  { name: 'Shatterfield',       profile: 'spires',  seed: 1519, amplitude: 400, skill: 0.82, wind: 0.11,
+    tip: 'Broken rock all the way across. Make your own line through it.' },
+  { name: 'The Undercut',       profile: 'canyon',  seed: 1633, amplitude: 420, skill: 0.84, wind: 0.08,
+    tip: 'Dig the ground out from under them and let the drop do the work.' },
+  { name: 'Storm Basin',        profile: 'crater',  seed: 1744, amplitude: 340, skill: 0.86, wind: 0.18,
+    tip: 'The worst gale on Barsoom, in a bowl. Range them every single turn.' },
+  { name: 'The Long Wall',      profile: 'ridge',   seed: 1858, amplitude: 470, skill: 0.88, wind: 0.09,
+    tip: 'Higher than anything you have shot over. Consider going through.' },
+  { name: 'Last Ground',        profile: 'twin',    seed: 1966, amplitude: 450, skill: 0.90, wind: 0.12,
+    tip: 'Whatever is left of both houses, on the last ridge either of them holds.' },
 ];
 
 /* Both platforms field the same hull in a given battle: this is a duel, and an
@@ -230,23 +380,46 @@ const enemyRoster = (i) => {
   if (i < 4) return ['laser', 'scatter'];
   if (i < 6) return ['laser', 'scatter', 'fusion'];
   if (i < 8) return ['laser', 'volley', 'fusion', 'rail'];
-  if (i < 10) return ['laser', 'volley', 'fusion', 'rail', 'ion'];
-  return ['laser', 'volley', 'fusion', 'rail', 'seeker', 'barrage'];
+  if (i < 10) return ['laser', 'volley', 'fusion', 'flak', 'rail'];
+  if (i < 13) return ['laser', 'volley', 'fusion', 'rail', 'seeker', 'barrage'];
+  if (i < 16) return ['laser', 'gauss', 'fusion', 'buster', 'seeker', 'barrage'];
+  return ['laser', 'gauss', 'howitzer', 'buster', 'seeker', 'barrage', 'mirv'];
 };
 
+/* Fortresses. Every sixth battle the enemy is not a platform at all but a
+   gun house dug into the ridge: far more hull, more mounts firing at once, and
+   it cannot be driven off its ground — but it is a much wider target, and the
+   ground under it can still be taken away. */
+const FORTRESS_AT = { 5: 'The Iron Bastion', 11: 'The Warlord\'s Citadel', 17: 'Fortress Barsoom' };
+
 BATTLES.forEach((b, i) => {
-  b.hp = 130 + i * 34;
-  b.enemyHp = b.hp;
-  b.playerHp = b.hp;
+  const fort = FORTRESS_AT[i];
+  if (fort) {
+    b.name = fort;
+    b.boss = true;
+    b.tip = 'A fortress, not a platform. It cannot run — but it can take a great deal more than one.';
+  }
+
+  /* A fortress already brings far more hull and a heavier volley. Stacking
+     that behind the campaign's tallest ridge made battle 12 unreachable —
+     0/3 with a loadout that cleared its neighbours — so boss ground is a
+     little kinder than the battles either side of it. */
+  if (b.boss) b.amplitude = Math.round(b.amplitude * 0.78);
+
+  const base = 130 + i * 30;
+  b.playerHp = base;                                   // yours is never inflated
+  b.enemyHp = b.boss ? Math.round(base * 1.7) : base;
+  b.hp = base;
   b.playerX = 210;
   b.enemyX = 1590;
-  b.enemyMounts = enemyRoster(i);
-  /* Grows slowly on purpose. The player's budget only rises when they BUY a
-     power module, so an enemy budget that climbed every battle left the
-     mid-campaign hopelessly out-volleyed — battle 6 was unwinnable with a
-     sensible three-mount loadout. This tracks a player who has bought one
-     power module by the middle of the campaign. */
-  b.enemyFirepower = 38 + i * 4.5;
+
+  // a fortress fields the roster of a battle three further on, and powers more
+  // of it at once, because standing still is the only advantage it gives up
+  b.enemyMounts = enemyRoster(b.boss ? Math.min(BATTLES.length - 1, i + 2) : i);
+  /* Three multipliers stacked (hull, firepower and a roster from further
+     up the campaign) made the mid bosses unwinnable at 0/3 with a plausible
+     loadout, while the finale was fine. Each one is gentler now. */
+  b.enemyFirepower = Math.round((38 + i * 4.5) * (b.boss ? 1.2 : 1));
 });
 
 // Kept for the campaign map and result screen, which speak in "assaults".

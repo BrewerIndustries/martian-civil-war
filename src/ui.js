@@ -6,7 +6,21 @@ const UI = (() => {
 
   let game = null;
   let progress = { stars: {}, best: {}, faction: 'red', credits: 0,
-                   owned: [STARTING_WEAPON], modules: [] };
+                   owned: { [STARTING_WEAPON]: 1 }, modules: [] };
+
+  /* Saves from before multiples stored a plain array of types. Fold either
+     shape into counts so an old save still loads. */
+  function normaliseOwned(raw) {
+    const counts = {};
+    if (Array.isArray(raw)) for (const t of raw) { if (WEAPONS[t]) counts[t] = (counts[t] || 0) + 1; }
+    else if (raw && typeof raw === 'object') {
+      for (const [t, n] of Object.entries(raw)) {
+        if (WEAPONS[t] && n > 0) counts[t] = Math.min(MAX_COPIES, Math.floor(n));
+      }
+    }
+    if (!Object.keys(counts).length) counts[STARTING_WEAPON] = 1;
+    return counts;
+  }
 
   function loadProgress() {
     try {
@@ -18,11 +32,10 @@ const UI = (() => {
           best: p.best || {},
           faction: FACTIONS[p.faction] ? p.faction : 'red',
           credits: Number(p.credits) || 0,
-          owned: Array.isArray(p.owned) && p.owned.length
-            ? p.owned.filter((w) => WEAPONS[w]) : [STARTING_WEAPON],
+          owned: normaliseOwned(p.owned),
           modules: Array.isArray(p.modules) ? p.modules.filter((m) => MODULES[m]) : [],
         };
-        if (!progress.owned.includes(STARTING_WEAPON)) progress.owned.push(STARTING_WEAPON);
+        if (!progress.owned[STARTING_WEAPON]) progress.owned[STARTING_WEAPON] = 1;
       }
     } catch (e) { /* private mode — play without saving */ }
   }
@@ -70,7 +83,7 @@ const UI = (() => {
       const armed = s.armed || [];
       const mounts = s.owned.map((w) => {
         const on = armed.includes(w);
-        const spec = WEAPONS[w];
+        const spec = mountSpec(w);
         const affordable = on || (s.armedLoad + spec.firepower <= s.firepower);
         return `<button class="ammo${on ? ' current' : ''}${affordable ? '' : ' over'}" ` +
           `data-weapon="${w}" title="${spec.name} — ${spec.firepower} firepower — ${spec.behaviour}">` +
@@ -100,11 +113,87 @@ const UI = (() => {
     $('ro-fuel-fill').style.background =
       fuelPct > 0.5 ? '#9fd93a' : fuelPct > 0.2 ? '#f0b73c' : '#e2634a';
 
+    // which gun are we laying, and the fire bar that goes with it
+    const laying = s.state === 'aim' && s.armed && s.armed.length;
+    $('ro-mount').textContent = laying
+      ? `${s.aimIndex + 1}/${s.armed.length} ${mountSpec(s.currentMount).name}` : '—';
+    const fb = $('firebar');
+    fb.classList.toggle('hidden', !laying);
+    if (laying) {
+      const msig = s.armed.join(',') + '|' + s.aimIndex;
+      if (msig !== hud._msig) {
+        hud._msig = msig;
+        $('firebar-mounts').innerHTML = s.armed.map((w, i) =>
+          `<button class="fb-mount${i === s.aimIndex ? ' active' : ''}" data-mount="${w}"` +
+          ` title="${mountSpec(w).name}" style="--tracer:${mountSpec(w).tracer}">` +
+          `${mountSpec(w).icon}</button>`).join('');
+        $('firebar-mounts').querySelectorAll('[data-mount]').forEach((b) => {
+          b.onclick = () => game.aimMount(b.dataset.mount);
+        });
+      }
+    }
+
     $('ro-turn').textContent =
       s.state === 'over' ? '—'
-      : s.state === 'enemy' || (s.state === 'flight' && !s.canAbility) ? 'Incoming'
+      : s.state === 'arming' ? 'Arm up'
+      : s.state === 'enemy' ? 'Incoming'
       : s.state === 'flight' ? 'In flight'
-      : 'Your shot';
+      : 'Lay the guns';
+  }
+
+  /* ---------- keyboard cursor ----------
+     One shared highlight that whatever overlay is open hands its items to, so
+     arrows move and Enter takes. Everything interactive is already a button
+     with an onclick, so activating is just a click() — no parallel code path
+     that can drift from what the mouse does. */
+
+  const nav = { items: [], index: 0 };
+
+  function navSet(selector) {
+    nav.items = [...document.querySelectorAll(selector)]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+    nav.index = Math.min(nav.index, Math.max(0, nav.items.length - 1));
+    navPaint();
+  }
+  function navClear() {
+    document.querySelectorAll('.kb-focus').forEach((el) => el.classList.remove('kb-focus'));
+    nav.items = [];
+  }
+  function navPaint() {
+    document.querySelectorAll('.kb-focus').forEach((el) => el.classList.remove('kb-focus'));
+    const el = nav.items[nav.index];
+    if (el) { el.classList.add('kb-focus'); el.scrollIntoView({ block: 'nearest' }); }
+  }
+  function navMove(d) {
+    if (!nav.items.length) return;
+    nav.index = (nav.index + d + nav.items.length) % nav.items.length;
+    navPaint();
+  }
+  // Rows are laid out in a responsive grid, so "down" means however many
+  // columns actually fit right now, not a number hard-coded here.
+  function navColumns() {
+    if (nav.items.length < 2) return 1;
+    const top = nav.items[0].getBoundingClientRect().top;
+    let cols = 0;
+    for (const el of nav.items) {
+      if (Math.abs(el.getBoundingClientRect().top - top) > 4) break;
+      cols++;
+    }
+    return Math.max(1, cols);
+  }
+  function navActivate() {
+    const el = nav.items[nav.index];
+    if (el) el.click();
+  }
+
+  function refreshNav() {
+    if (!$('help').classList.contains('hidden')) return navSet('#help button');
+    if (!$('arming').classList.contains('hidden')) return navSet('.arm-card, .shield-cell');
+    if (!$('armory').classList.contains('hidden')) return navSet('.shop-card button:not(:disabled)');
+    if (!$('levels').classList.contains('hidden')) return navSet('.level-card:not(.locked)');
+    if (!$('result').classList.contains('hidden')) return navSet('#result .panel-actions button');
+    if (!$('title').classList.contains('hidden')) return navSet('.faction-card');
+    navClear();
   }
 
   /* ---------- arming the volley ----------
@@ -125,7 +214,9 @@ const UI = (() => {
     const grid = $('arming-grid');
     grid.innerHTML = '';
     game.owned.forEach((id, i) => {
-      const w = WEAPONS[id];
+      const w = mountSpec(id);
+      const copies = game.ownedCounts[mountType(id)] || 1;
+      const nth = copies > 1 ? ` ${Number(id.split('#')[1]) + 1}` : '';
       const on = game.armed.includes(id);
       const affordable = on || game.canArm(id);
       const el = document.createElement('button');
@@ -134,14 +225,16 @@ const UI = (() => {
         `<span class="arm-key">${i + 1}</span>` +
         `<span class="arm-icon" style="color:${w.tracer}">${w.icon}</span>` +
         `<span class="arm-body">` +
-          `<b>${w.name}</b>` +
+          `<b>${w.name}${nth}</b>` +
           `<i>${w.behaviour}</i>` +
           `<em>${w.damage} dmg${w.salvo ? ` ×${w.salvo.count}` : ''} · ${w.blast} blast · ${w.dig} dig</em>` +
         `</span>` +
         `<span class="arm-fp">${w.firepower}<small>fp</small></span>`;
-      el.onclick = () => { game.toggleMount(id); renderArming(); };
+      el.onclick = () => { game.toggleMount(id); renderArming(); refreshNav(); };
       grid.appendChild(el);
     });
+
+    renderShields();
 
     const fitted = $('arming-fitted');
     fitted.innerHTML = game.modules.length
@@ -150,11 +243,43 @@ const UI = (() => {
       : '<span class="fitted-label">No modules fitted — see the Armory</span>';
   }
 
+  /* The shield minigame: nine zones over the face of your platform, cycled
+     between empty, an armour plate and an energy screen. Weak spots are marked
+     because covering them is the whole decision. */
+  function renderShields() {
+    const grid = $('shield-grid');
+    const stock = game.shieldStock;
+    grid.innerHTML = '';
+    for (let z = 0; z < ZONE_COUNT; z++) {
+      const seg = game.shieldLayout[z];
+      const weak = (game.playerWeak || []).includes(z);
+      const row = Math.floor(z / ZONE_COLS), col = z % ZONE_COLS;
+      const cell = document.createElement('button');
+      cell.className = 'shield-cell' + (weak ? ' weak' : '') + (seg ? ' has-' + seg.type : '');
+      const pct = seg
+        ? Math.round(100 * (seg.type === 'plate' ? seg.hp / seg.max : seg.charge / seg.max))
+        : 0;
+      cell.innerHTML =
+        `<span class="sc-icon">${seg ? SHIELDS[seg.type].icon : ''}</span>` +
+        `<span class="sc-name">${ZONE_NAMES[row][col]}</span>` +
+        (seg ? `<span class="sc-bar"><i style="width:${pct}%"></i></span>` : '');
+      cell.title = `${ZONE_NAMES[row][col]}${weak ? ' — WEAK SPOT (double damage)' : ''}`;
+      cell.onclick = () => { game.cycleShield(z); renderShields(); refreshNav(); };
+      grid.appendChild(cell);
+    }
+    $('shield-stock').innerHTML =
+      `<span class="stock-chip"><b>${game.shieldUsed('plate')}/${stock.plate}</b> ${SHIELDS.plate.icon} plates</span>` +
+      `<span class="stock-chip"><b>${game.shieldUsed('screen')}/${stock.screen}</b> ${SHIELDS.screen.icon} screens</span>`;
+  }
+
   function showArming() {
     if (!game.battle || game.state === 'over') return;
     renderArming();
     show('arming');
+    nav.index = 0;
+    refreshNav();
   }
+  function showHelp() { show('help'); refreshNav(); }
 
   /* ---------- armory ---------- */
 
@@ -170,8 +295,8 @@ const UI = (() => {
       shop.appendChild(h);
     };
 
-    section('Mounts', 'every mount fires each turn');
-    weaponList().forEach((id) => card(shop, id, WEAPONS[id], progress.owned.includes(id), buy));
+    section('Mounts', 'arm what you can power each turn — buy more than one of any gun');
+    weaponList().forEach((id) => mountCard(shop, id));
 
     for (const kind of MODULE_KINDS) {
       const ids = moduleList().filter((m) => MODULES[m].kind === kind.id);
@@ -229,11 +354,41 @@ const UI = (() => {
     $('hud-credits').textContent = fmt(progress.credits);
   }
 
-  function buy(id) {
+  /* A mount card shows how many you already have and what the next copy
+     costs; repeat copies get dearer so the cheapest gun cannot simply be
+     stacked. */
+  function mountCard(shop, id) {
     const w = WEAPONS[id];
-    if (progress.owned.includes(id) || progress.credits < w.cost) return;
-    progress.credits -= w.cost;
-    progress.owned.push(id);
+    const have = progress.owned[id] || 0;
+    const maxed = have >= MAX_COPIES;
+    const price = copyCost(id, have);
+    const affordable = !maxed && progress.credits >= price;
+
+    const el = document.createElement('div');
+    el.className = 'shop-card' + (have ? ' owned' : '') + (affordable || maxed ? '' : ' locked');
+    el.innerHTML =
+      `<span class="shop-icon">${w.icon}${have > 1 ? `<i class="copies">×${have}</i>` : ''}</span>` +
+      `<div class="shop-body">` +
+        `<span class="shop-name">${w.name}${have ? ` <b class="have">×${have}</b>` : ''}</span>` +
+        `<span class="shop-blurb">${w.blurb}</span>` +
+        `<span class="shop-stats"><em>${w.behaviour}</em> · ${w.damage} dmg` +
+          `${w.salvo ? ` ×${w.salvo.count}` : ''} · ${w.firepower} fp</span>` +
+      `</div>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn tiny ' + (affordable ? 'primary' : 'ghost');
+    btn.textContent = maxed ? 'Max' : have ? `+1 · ${fmt(price)} cr` : `${fmt(price)} cr`;
+    btn.disabled = !affordable;
+    btn.onclick = () => buy(id);
+    el.appendChild(btn);
+    shop.appendChild(el);
+  }
+
+  function buy(id) {
+    const have = progress.owned[id] || 0;
+    const price = copyCost(id, have);
+    if (have >= MAX_COPIES || progress.credits < price) return;
+    progress.credits -= price;
+    progress.owned[id] = have + 1;
     saveProgress();
     game.setLoadout(progress.owned);
     Sfx.star(1);
@@ -313,25 +468,30 @@ const UI = (() => {
     $('map-credits').textContent = fmt(progress.credits);
   }
 
-  function showLevels() { renderGrid(); show('levels'); }
-  function showArmory() { renderShop(); show('armory'); }
+  function showLevels() { renderGrid(); show('levels'); nav.index = 0; refreshNav(); }
+  function showArmory() { renderShop(); show('armory'); nav.index = 0; refreshNav(); }
 
   const show = (id) => { $(id).classList.remove('hidden'); if (game) game.paused = true; };
+  const anyOpen = () =>
+    ['result', 'levels', 'title', 'armory', 'arming', 'help']
+      .some((k) => !$(k).classList.contains('hidden'));
+  const topOverlay = () =>
+    ['help', 'arming', 'armory', 'result', 'levels', 'title']
+      .find((k) => !$(k).classList.contains('hidden'));
   const hide = (id) => {
     $(id).classList.add('hidden');
-    const open = ['result', 'levels', 'title', 'armory', 'arming'].some((k) => !$(k).classList.contains('hidden'));
-    if (game && !open) game.paused = false;
+    if (game && !anyOpen()) game.paused = false;
+    refreshNav();
   };
 
   /* ---------- flow ---------- */
 
   function start(index) {
-    ['title', 'result', 'levels', 'armory', 'arming'].forEach(hide);
+    ['title', 'result', 'levels', 'armory', 'arming', 'help'].forEach(hide);
     game.setLoadout(progress.owned);
     game.setModules(progress.modules);
     game.load(index);
-    // choose the opening volley before the first shot
-    if (game.owned.length > 1) showArming();
+    showArming();          // every turn opens with the arming panel
     const hint = $('hint');
     hint.textContent = BATTLES[index].tip || 'Drag back from your platform to aim & fire';
     hint.classList.remove('gone');
@@ -353,8 +513,11 @@ const UI = (() => {
       ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   }
 
+  function onTurnStart() { showArming(); }
+
   function bind(g) {
     game = g;
+    g.hooks.onTurnStart = onTurnStart;
     loadProgress();
     const stamp = buildStamp();
     ['build-title', 'build-map'].forEach((id) => { if ($(id)) $(id).textContent = stamp; });
@@ -373,8 +536,14 @@ const UI = (() => {
 
     $('btn-menu').onclick = () => { Sfx.click(); showLevels(); };
     $('btn-arm').onclick = () => { Sfx.click(); showArming(); };
-    $('btn-close-arming').onclick = () => { Sfx.click(); hide('arming'); };
-    $('btn-ready').onclick = () => { Sfx.click(); hide('arming'); };
+    $('btn-keys').onclick = () => { Sfx.click(); showHelp(); };
+    $('btn-close-help').onclick = () => { Sfx.click(); hide('help'); };
+    $('btn-close-help-2').onclick = () => { Sfx.click(); hide('help'); };
+    $('btn-ready').onclick = () => { Sfx.click(); hide('arming'); game.beginAiming(); };
+    $('btn-close-arming').onclick = () => { Sfx.click(); hide('arming'); game.beginAiming(); };
+    $('btn-fire').onclick = () => { Sfx.click(); game.fireAll(); };
+    $('btn-next-mount').onclick = () => game.nextMount();
+    $('btn-prev-mount').onclick = () => game.cycleMount(-1);
     $('btn-close-levels').onclick = () => { Sfx.click(); hide('levels'); };
     $('btn-armory').onclick = () => { Sfx.click(); hide('levels'); showArmory(); };
     $('btn-armory-2').onclick = () => { Sfx.click(); showArmory(); };
@@ -389,7 +558,7 @@ const UI = (() => {
     $('btn-wipe').onclick = () => {
       if (!confirm('Reset stars, scores, credits, mounts and modules?')) return;
       progress = { stars: {}, best: {}, faction: progress.faction, credits: 0,
-                   owned: [STARTING_WEAPON], modules: [] };
+                   owned: { [STARTING_WEAPON]: 1 }, modules: [] };
       saveProgress();
       game.setLoadout(progress.owned);
       game.setModules(progress.modules);
@@ -397,11 +566,14 @@ const UI = (() => {
     };
 
     renderGrid();
+    refreshNav();
     return {
-      hud, showResult, showLevels, showArmory, showArming, renderArming, start, hide,
+      hud, showResult, showLevels, showArmory, showArming, renderArming, renderShields, onTurnStart, start, hide,
       ownedWeapons: () => progress.owned,
-      isOverlayOpen: () =>
-        ['result', 'levels', 'title', 'armory', 'arming'].some((k) => !$(k).classList.contains('hidden')),
+      isOverlayOpen: anyOpen,
+      topOverlay,
+      showHelp,
+      nav: { move: navMove, activate: navActivate, columns: navColumns, refresh: refreshNav },
     };
   }
 

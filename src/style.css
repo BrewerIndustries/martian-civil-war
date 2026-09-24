@@ -62,22 +62,24 @@ html, body {
   display: grid; place-items: center;
   font-size: 17px;
   color: var(--ink);
-  background: rgba(30, 18, 14, .74);
+  background: rgba(28, 17, 13, .93);
   border: 1px solid var(--line);
   border-radius: 11px;
   cursor: pointer;
-  backdrop-filter: blur(6px);
+  /* no backdrop-filter: this sits over the LIVE canvas, and blurring a
+     moving backdrop flashes whenever a child transforms on hover */
   transition: transform .12s ease, background .15s ease, border-color .15s ease;
 }
-.icon-btn:hover { background: rgba(58, 34, 26, .92); border-color: var(--gold-deep); transform: translateY(-1px); }
+.icon-btn:hover { background: rgba(60, 36, 27, .97); border-color: var(--gold-deep); transform: translateY(-1px); }
 .icon-btn:active { transform: translateY(0) scale(.95); }
 
 .score-box {
   display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1;
   padding: 3px 12px; border-radius: 11px;
-  background: rgba(30, 18, 14, .74);
+  background: rgba(28, 17, 13, .93);
   border: 1px solid var(--line);
-  backdrop-filter: blur(6px);
+  /* no backdrop-filter: this sits over the LIVE canvas, and blurring a
+     moving backdrop flashes whenever a child transforms on hover */
   min-width: 92px;
 }
 .score-label { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-dim); }
@@ -87,9 +89,10 @@ html, body {
 .ammo-rack {
   display: flex; gap: 7px; align-items: center;
   padding: 7px 11px; border-radius: 13px;
-  background: rgba(30, 18, 14, .74);
+  background: rgba(28, 17, 13, .93);
   border: 1px solid var(--line);
-  backdrop-filter: blur(6px);
+  /* no backdrop-filter: this sits over the LIVE canvas, and blurring a
+     moving backdrop flashes whenever a child transforms on hover */
 }
 .ammo {
   position: relative;
@@ -117,10 +120,11 @@ html, body {
   position: absolute; top: 66px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 6px; align-items: center;
   padding: 5px 12px; border-radius: 999px;
-  background: rgba(30, 18, 14, .72);
+  background: rgba(28, 17, 13, .92);
   border: 1px solid var(--line);
   font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-dim);
-  backdrop-filter: blur(6px);
+  /* no backdrop-filter: this sits over the LIVE canvas, and blurring a
+     moving backdrop flashes whenever a child transforms on hover */
   pointer-events: none;
 }
 .target-counter b { color: var(--ink); font-size: 14px; }
@@ -129,10 +133,11 @@ html, body {
 .hint {
   position: absolute; left: 50%; bottom: 42px; transform: translateX(-50%);
   padding: 9px 18px; border-radius: 999px;
-  background: rgba(30, 18, 14, .8);
+  background: rgba(28, 17, 13, .94);
   border: 1px solid var(--line);
   font-size: 13px; color: var(--ink-dim);
-  backdrop-filter: blur(6px);
+  /* no backdrop-filter: this sits over the LIVE canvas, and blurring a
+     moving backdrop flashes whenever a child transforms on hover */
   pointer-events: none;
   transition: opacity .4s ease;
 }
@@ -144,8 +149,11 @@ html, body {
   position: absolute; inset: 0;
   display: grid; place-items: center;
   padding: 20px;
-  background: rgba(12, 7, 5, .76);
-  backdrop-filter: blur(9px);
+  /* A solid scrim rather than a frosted one. Panel cards lift on hover, and
+     transforming a child inside a backdrop-filtered container makes the
+     browser re-composite the blur — which reads as a glitchy flash. Nothing in
+     this game is worth that. */
+  background: rgba(12, 7, 5, .90);
   z-index: 10;
   animation: fade .22s ease;
 }
@@ -334,9 +342,10 @@ html, body {
   position: absolute; top: 66px; left: 50%; transform: translateX(-50%);
   display: flex; gap: 2px; align-items: stretch;
   padding: 4px; border-radius: 12px;
-  background: rgba(30, 18, 14, .74);
+  background: rgba(28, 17, 13, .93);
   border: 1px solid var(--line);
-  backdrop-filter: blur(6px);
+  /* no backdrop-filter: this sits over the LIVE canvas, and blurring a
+     moving backdrop flashes whenever a child transforms on hover */
   pointer-events: none;
 }
 .readout .ro {
@@ -532,3 +541,136 @@ html, body {
   font-size: 11px; padding: 3px 9px; border-radius: 999px;
   background: #2b3a22; border: 1px solid #4c6b3a; color: #cfe6b4;
 }
+
+
+/* ---------- fire bar: laying each gun, then letting fly ---------- */
+
+.firebar {
+  position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 14px;
+  background: rgba(28, 17, 13, .95);
+  border: 1px solid var(--line);
+  /* no backdrop-filter: this sits over the LIVE canvas, and blurring a
+     moving backdrop flashes whenever a child transforms on hover */
+  box-shadow: 0 14px 36px rgba(0,0,0,.45);
+}
+.firebar.hidden { display: none; }
+.fb-mounts { display: flex; gap: 5px; }
+.fb-mount {
+  width: 34px; height: 34px; border-radius: 10px;
+  display: grid; place-items: center;
+  font-size: 16px; color: var(--ink);
+  background: #2b1b16; border: 2px solid #4a3129;
+  cursor: pointer;
+  transition: transform .12s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.fb-mount:hover { transform: translateY(-2px); }
+.fb-mount.active {
+  border-color: var(--tracer, var(--gold));
+  box-shadow: 0 0 0 2px rgba(255,255,255,.06) inset, 0 0 14px -2px var(--tracer, var(--gold));
+  transform: translateY(-2px);
+}
+.fb-step {
+  width: 28px; height: 34px; border-radius: 9px;
+  background: transparent; border: 1px solid var(--line);
+  color: var(--ink-dim); font-size: 16px; cursor: pointer;
+}
+.fb-step:hover { color: var(--ink); border-color: var(--gold-deep); }
+.fb-fire { padding: 9px 18px; font-size: 13px; letter-spacing: .08em; }
+.readout .mount b { color: var(--gold); font-size: 12px; }
+
+@media (max-width: 720px) {
+  .firebar { bottom: 12px; padding: 6px; gap: 5px; }
+  .fb-mount { width: 28px; height: 28px; font-size: 13px; }
+  .fb-fire { padding: 7px 12px; font-size: 11px; }
+}
+
+
+/* ---------- keyboard reference + keyboard cursor ---------- */
+
+.keys-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; }
+.keys-col h3 {
+  margin: 0 0 8px; font-size: 11px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--gold);
+}
+.keys-col h3:not(:first-child) { margin-top: 16px; }
+.keys-col dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; align-items: baseline; }
+.keys-col dt { white-space: nowrap; }
+.keys-col dd { margin: 0; font-size: 12px; color: var(--ink-dim); line-height: 1.35; }
+kbd {
+  display: inline-block; min-width: 20px; padding: 2px 6px; margin-right: 2px;
+  font: 700 11px/1.4 var(--font);
+  text-align: center; color: var(--ink);
+  background: #2f1d17; border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: 5px;
+}
+
+/* the shared keyboard cursor: whatever is highlighted, Enter takes */
+.kb-focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+
+/* ---------- shield placement ---------- */
+
+.arming-split { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; align-items: start; }
+.arming-left { min-width: 0; }
+.shield-head {
+  margin: 0 0 8px; font-size: 11px; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--gold);
+}
+.shield-head i {
+  font-style: normal; letter-spacing: .04em; text-transform: none;
+  color: var(--ink-dim); font-weight: 400; margin-left: 6px;
+}
+.shield-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.shield-cell {
+  position: relative;
+  aspect-ratio: 1 / .72;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 4px;
+  border-radius: 9px;
+  background: #26170f;
+  border: 1px solid var(--line);
+  color: var(--ink); font: inherit;
+  cursor: pointer;
+  transition: border-color .14s ease, background .14s ease;
+}
+.shield-cell:hover { background: #331f14; }
+.shield-cell.weak { border-color: #a8412c; background: #33150f; }
+.shield-cell.weak::after {
+  content: "!"; position: absolute; top: 3px; right: 6px;
+  font-size: 10px; font-weight: 700; color: #ff8a5c;
+}
+.shield-cell.has-plate { border-color: #9a8b74; }
+.shield-cell.has-screen { border-color: #6aa8cc; }
+.sc-icon { font-size: 15px; line-height: 1; min-height: 15px; }
+.sc-name { font-size: 8.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-dim); text-align: center; }
+.sc-bar { display: block; width: 78%; height: 3px; border-radius: 2px; background: rgba(0,0,0,.45); overflow: hidden; }
+.sc-bar > i { display: block; height: 100%; background: var(--good); }
+.shield-cell.has-plate .sc-bar > i { background: #c9a58a; }
+.shield-cell.has-screen .sc-bar > i { background: #8fd0ff; }
+
+.shield-stock { display: flex; gap: 8px; margin-top: 9px; }
+.stock-chip {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  background: #2b1b16; border: 1px solid var(--line); color: var(--ink-dim);
+}
+.stock-chip b { color: var(--ink); }
+.shield-note { margin: 9px 0 0; font-size: 10.5px; line-height: 1.45; color: #8a7264; }
+
+@media (max-width: 780px) { .arming-split { grid-template-columns: 1fr; } }
+
+
+/* owning more than one of a gun */
+.shop-icon { position: relative; }
+.shop-icon .copies {
+  position: absolute; bottom: -3px; right: -6px;
+  font-style: normal; font-size: 9px; font-weight: 700;
+  padding: 1px 4px; border-radius: 7px;
+  background: var(--gold); color: #241409;
+}
+.shop-name .have { color: var(--gold); font-size: 12px; }

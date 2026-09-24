@@ -35,9 +35,16 @@ class Game {
     this.owned = [STARTING_WEAPON];
     this.modules = [];
     this.mods = this._rollUpModules();
+    this.shieldLayout = {};
+    this.playerWeak = [];
+    this.foeWeak = [];
     this.armed = [STARTING_WEAPON];
-    this.aimAngle = 42;        // degrees above horizontal
-    this.aimPower = 0.7;       // 0..1
+    /* Each armed mount carries its own firing solution. A turn is: arm the
+       volley, lay each gun in turn, then fire everything at once — so the
+       platform can dig with one mount and go for the hull with another in the
+       same breath. */
+    this.solutions = {};
+    this.aimIndex = 0;
     this.fuel = PLATFORM.fuel;
     this.driveDir = 0;
     this.dragging = false;
@@ -51,15 +58,84 @@ class Game {
     requestAnimationFrame(this._frame);
   }
 
+  _sol(id) {
+    if (!this.solutions[id]) this.solutions[id] = { angle: 42, power: 0.7 };
+    return this.solutions[id];
+  }
+  get currentMount() {
+    if (!this.armed || !this.armed.length) return this.owned ? this.owned[0] : STARTING_WEAPON;
+    return this.armed[Math.min(this.aimIndex, this.armed.length - 1)];
+  }
+  get aimAngle() { return this._sol(this.currentMount).angle; }
+  set aimAngle(v) { this._sol(this.currentMount).angle = v; }
+  get aimPower() { return this._sol(this.currentMount).power; }
+  set aimPower(v) { this._sol(this.currentMount).power = v; }
+
+  // Lay the next gun; past the last one, the whole volley goes.
+  nextMount() {
+    if (this.state !== 'aim') return;
+    if (this.aimIndex >= this.armed.length - 1) { this.fireAll(); return; }
+    this.aimIndex++;
+    Sfx.click();
+    this._emitHud();
+  }
+  cycleMount(dir) {
+    if (this.state !== 'aim' || !this.armed.length) return;
+    this.aimIndex = (this.aimIndex + dir + this.armed.length) % this.armed.length;
+    Sfx.click();
+    this._emitHud();
+  }
+  aimMount(id) {
+    const i = this.armed.indexOf(id);
+    if (i < 0 || this.state !== 'aim') return;
+    this.aimIndex = i;
+    this._emitHud();
+  }
+
+  // Called by the UI when the arming panel is dismissed.
+  beginAiming() {
+    if (this.state !== 'arming') return;
+    this.aimIndex = 0;
+    this.state = 'aim';
+    this._emitHud();
+  }
+
+  fireAll() {
+    if (this.state !== 'aim' || !this.armed.length) return;
+    for (const key of this.armed) {
+      const sol = this._sol(key);
+      this._launch(this.player, sol.angle, sol.power, mountType(key));
+    }
+    this.player.recoil = 1;
+    this.lastShooter = this.player;
+    this.abilityUsed = false;
+    this.state = 'flight';
+    this.shake = Math.min(this.shake + 4 + this.armed.length * 1.6, 22);
+    Sfx.launch();
+    const o = this.muzzle(this.player, this.aimAngle);
+    this._puff(o.x, o.y, 10 + this.armed.length * 3, '#e8c9a0');
+    this._emitHud();
+  }
+
   setFaction(id) { if (FACTIONS[id]) this.faction = id; }
   get house() { return FACTIONS[this.faction]; }
   get enemyHouse() { return FACTIONS[otherFaction(this.faction)]; }
 
+  /* Takes either a counts object ({laser: 2, fusion: 1}) or a legacy array of
+     weapon types, and expands it into ordered mount INSTANCES so two of the
+     same gun are two separate mounts. */
   setLoadout(owned) {
-    // Ordered so the broadside always launches in the same sequence.
-    const list = owned && owned.length ? owned.slice() : [STARTING_WEAPON];
-    this.owned = weaponList().filter((w) => list.includes(w));
-    if (!this.owned.length) this.owned = [STARTING_WEAPON];
+    let counts = {};
+    if (Array.isArray(owned)) for (const t of owned) counts[t] = (counts[t] || 0) + 1;
+    else if (owned && typeof owned === 'object') counts = { ...owned };
+    if (!Object.values(counts).some((n) => n > 0)) counts = { [STARTING_WEAPON]: 1 };
+
+    this.ownedCounts = counts;
+    this.owned = expandMounts(counts);
+    if (!this.owned.length) {
+      this.ownedCounts = { [STARTING_WEAPON]: 1 };
+      this.owned = expandMounts(this.ownedCounts);
+    }
     this._refitArmed();
     this._emitHud();
   }
@@ -71,21 +147,22 @@ class Game {
 
   get firepower() { return PLATFORM.firepower + this.mods.firepower; }
   get armedLoad() {
-    return this.armed.reduce((n, id) => n + (WEAPONS[id] ? WEAPONS[id].firepower : 0), 0);
+    return this.armed.reduce((n, key) => n + (mountSpec(key) ? mountSpec(key).firepower : 0), 0);
   }
-  canArm(id) {
-    const w = WEAPONS[id];
-    return !!w && this.owned.includes(id) &&
+  canArm(key) {
+    const w = mountSpec(key);
+    return !!w && this.owned.includes(key) &&
            this.armedLoad + w.firepower <= this.firepower;
   }
 
   toggleMount(id) {
-    if (this.state !== 'aim' || !this.owned.includes(id)) return;
+    // The panel runs in 'arming'; mounts can also be swapped while laying.
+    if ((this.state !== 'arming' && this.state !== 'aim') || !this.owned.includes(id)) return;
     if (this.armed.includes(id)) {
       this.armed = this.armed.filter((w) => w !== id);
       Sfx.click();
     } else if (this.canArm(id)) {
-      this.armed = weaponList().filter((w) => this.armed.includes(w) || w === id);
+      this.armed = this.owned.filter((w) => this.armed.includes(w) || w === id);
       Sfx.click();
     } else {
       Sfx.thud(0.4);          // over budget — nothing to arm it with
@@ -99,16 +176,15 @@ class Game {
   _refitArmed() {
     const keep = [];
     let load = 0;
-    for (const id of weaponList()) {
-      if (!this.owned.includes(id) || !this.armed.includes(id)) continue;
-      const w = WEAPONS[id];
-      if (load + w.firepower <= this.firepower) { keep.push(id); load += w.firepower; }
+    for (const key of this.owned) {
+      if (!this.armed.includes(key)) continue;
+      const w = mountSpec(key);
+      if (load + w.firepower <= this.firepower) { keep.push(key); load += w.firepower; }
     }
     if (!keep.length) {
-      for (const id of weaponList()) {
-        if (!this.owned.includes(id)) continue;
-        const w = WEAPONS[id];
-        if (load + w.firepower <= this.firepower) { keep.push(id); load += w.firepower; }
+      for (const key of this.owned) {
+        const w = mountSpec(key);
+        if (load + w.firepower <= this.firepower) { keep.push(key); load += w.firepower; }
       }
     }
     this.armed = keep;
@@ -129,18 +205,120 @@ class Game {
     this._emitHud();
   }
 
+  /* ---------- zones, weak spots and placed shields ---------- */
+
+  // Which of the nine zones did a hit at (x, y) land on?
+  zoneAt(pl, x, y) {
+    const w = pl.w || PLATFORM.w, h = pl.h || PLATFORM.h;
+    const left = pl.x - w / 2, top = pl.y - h;
+    const col = clamp(Math.floor((x - left) / (w / ZONE_COLS)), 0, ZONE_COLS - 1);
+    const row = clamp(Math.floor((y - top) / (h / ZONE_ROWS)), 0, ZONE_ROWS - 1);
+    return row * ZONE_COLS + col;
+  }
+
+  // Two weak spots per structure, rerolled per battle but fixed within it, so
+  // they can be found and then either covered or exploited.
+  _rollWeakSpots(seed) {
+    const rnd = mulberry32(seed);
+    const pick = [];
+    while (pick.length < 2) {
+      const z = Math.floor(rnd() * ZONE_COUNT);
+      if (!pick.includes(z)) pick.push(z);
+    }
+    return pick;
+  }
+
+  get shieldStock() {
+    return {
+      plate: PLATFORM.plates + (this.mods.plates || 0),
+      screen: PLATFORM.screens + (this.mods.screens || 0),
+    };
+  }
+  shieldUsed(type) {
+    return Object.values(this.shieldLayout || {}).filter((s) => s.type === type).length;
+  }
+
+  /* Cycle a zone: empty -> plate -> screen -> empty, skipping anything you
+     have run out of. One control, no drag targets, works with a click or a
+     key. */
+  cycleShield(zone) {
+    if (this.state !== 'arming' && this.state !== 'aim') return;
+    const cur = this.shieldLayout[zone];
+    const stock = this.shieldStock;
+    const order = [null, 'plate', 'screen'];
+    let at = order.indexOf(cur ? cur.type : null);
+    for (let step = 0; step < 3; step++) {
+      at = (at + 1) % 3;
+      const want = order[at];
+      if (!want) { delete this.shieldLayout[zone]; Sfx.click(); this._emitHud(); return; }
+      const inUse = this.shieldUsed(want) - (cur && cur.type === want ? 1 : 0);
+      if (inUse < stock[want]) {
+        const spec = SHIELDS[want];
+        this.shieldLayout[zone] = want === 'plate'
+          ? { type: 'plate', hp: spec.hp, max: spec.hp }
+          : { type: 'screen', charge: spec.charge, max: spec.charge };
+        Sfx.click(); this._emitHud(); return;
+      }
+    }
+    Sfx.thud(0.4);
+  }
+
+  // Screens come back between volleys; plates do not.
+  _rechargeShields() {
+    for (const seg of Object.values(this.shieldLayout || {})) {
+      if (seg.type === 'screen') seg.charge = Math.min(seg.max, seg.charge + SHIELDS.screen.recharge);
+    }
+  }
+
+  /* Resolve one hit against a structure: weak spot first, then whatever is
+     bolted over that zone. Returns the damage that actually gets through. */
+  _throughShields(pl, zone, amount) {
+    const weak = (pl === this.player ? this.playerWeak : this.foeWeak) || [];
+    let dmg = amount * (weak.includes(zone) ? WEAK_MULTIPLIER : 1);
+
+    if (pl !== this.player) return dmg;            // only you place segments
+    const seg = this.shieldLayout[zone];
+    if (!seg) return dmg;
+
+    if (seg.type === 'plate') {
+      const soaked = Math.min(seg.hp, dmg);
+      seg.hp -= soaked;
+      dmg -= soaked;
+      if (seg.hp <= 0) {
+        this.popups.push({ x: pl.x, y: pl.y - 150, text: 'PLATE GONE', color: '#c9a58a',
+                           life: 1.1, maxLife: 1.1, vy: -0.8 });
+      }
+    } else if (seg.charge > 0) {
+      const blocked = dmg * SHIELDS.screen.reduce;
+      const drawn = Math.min(seg.charge, blocked);
+      seg.charge -= drawn;
+      dmg -= drawn;
+      if (seg.charge <= 0) {
+        this.popups.push({ x: pl.x, y: pl.y - 150, text: 'SCREEN DOWN', color: '#8fd0ff',
+                           life: 1.1, maxLife: 1.1, vy: -0.8 });
+      }
+    }
+    return Math.max(0, dmg);
+  }
+
   _rollUpModules() {
     const m = { hull: 0, damageReduce: 0, splashReduce: 0, regen: 0,
-                fuel: 0, climb: 0, driveSpeed: 0, fallReduce: 0, firepower: 0 };
+                fuel: 0, climb: 0, driveSpeed: 0, fallReduce: 0, firepower: 0,
+                windResist: 0, plates: 0, screens: 0,
+                impactMarker: false, fullArc: false, scanner: false };
     for (const id of this.modules || []) {
       const mod = MODULES[id];
       if (!mod) continue;
-      for (const k of Object.keys(m)) if (mod[k]) m[k] += mod[k];
+      for (const k of Object.keys(m)) {
+        if (!mod[k]) continue;
+        if (typeof m[k] === 'boolean') m[k] = true; else m[k] += mod[k];
+      }
     }
     // fractions stack additively but must never reach total immunity
     m.damageReduce = Math.min(0.6, m.damageReduce);
     m.splashReduce = Math.min(0.75, m.splashReduce);
     m.fallReduce = Math.min(0.85, m.fallReduce);
+    m.windResist = Math.min(0.85, m.windResist);
     return m;
   }
 
@@ -177,13 +355,17 @@ class Game {
     this.terrain.generate({
       profile: spec.profile, seed: spec.seed, amplitude: spec.amplitude,
       base: WORLD.baseY, flatten: [spec.playerX, spec.enemyX],
+      wideFlatten: spec.boss ? spec.enemyX : null,
     });
 
     this.foeMounts = (spec.enemyMounts || ['laser']).slice();
     this._refitArmed();
     this.player = this._makePlatform(spec.playerX, this.faction, spec.playerHp + this.mods.hull, 1);
-    this.foe = this._makePlatform(spec.enemyX, otherFaction(this.faction), spec.enemyHp, -1);
+    this.foe = this._makePlatform(spec.enemyX, otherFaction(this.faction), spec.enemyHp, -1, !!spec.boss);
 
+    this.playerWeak = this._rollWeakSpots(spec.seed * 7 + 13);
+    this.foeWeak = this._rollWeakSpots(spec.seed * 31 + 5);
+    this.shieldLayout = {};
     this.shells.length = 0;
     this.particles.length = 0;
     this.popups.length = 0;
@@ -197,7 +379,7 @@ class Game {
     this.aimPower = 0.7;
     this.fuel = this.maxFuel;
     this.driveDir = 0;
-    this.state = 'aim';
+    this.state = 'arming';
     this.paused = false;
     this._rollWind();
     this._emitHud();
@@ -206,11 +388,14 @@ class Game {
 
   restart() { this.load(this.battleIndex); }
 
-  _makePlatform(x, factionId, hp, facing) {
+  _makePlatform(x, factionId, hp, facing, fortress = false) {
     return {
       x, y: this.terrain.topAt(x), facing,
       faction: FACTIONS[factionId], hp, maxHp: hp,
       recoil: 0, barrel: facing > 0 ? 42 : 138,
+      fortress,
+      w: fortress ? PLATFORM.fortW : PLATFORM.w,
+      h: fortress ? PLATFORM.fortH : PLATFORM.h,
     };
   }
 
@@ -236,8 +421,13 @@ class Game {
     const move = (e) => { if (!this.dragging) return; e.preventDefault(); this._drag(pos(e)); };
     const up = (e) => {
       if (!this.dragging) return;
-      e.preventDefault(); this.dragging = false;
-      if (this.aimPower > 0.06) this.fire();
+      e.preventDefault();
+      this.dragging = false;
+      /* Releasing lays THIS gun and nothing more. It used to fire, which was
+         right when a turn was a single shot — but now the volley only goes
+         when the player says so, via the fire bar, F, or Enter on the last
+         mount. */
+      this._emitHud();
     };
     c.addEventListener('mousedown', down);
     window.addEventListener('mousemove', move);
@@ -322,8 +512,11 @@ class Game {
      scatters them across the target. That is the point of a rolling fortress:
      you do not snipe, you saturate. Early on, with one mount, it is a precise
      duel; a full arsenal turns it into a barrage. */
-  fire(owner = this.player, angle = this.aimAngle, power = this.aimPower, mounts = null) {
-    if (this.state !== 'aim' && owner === this.player) return;
+  /* The enemy's volley. The player fires through fireAll(), and a call with
+     no owner routes there too — defaulting this to the foe is exactly how the
+     drag-release bug shipped. */
+  fire(owner, angle = 42, power = 0.7, mounts = null) {
+    if (!owner || owner === this.player) return this.fireAll();
     const roster = mounts || this.rosterFor(owner);
     if (!roster.length) return;
 
@@ -375,12 +568,12 @@ class Game {
   }
 
   trimPower(weaponId, angle, power) {
-    const w = WEAPONS[weaponId];
+    const w = WEAPONS[mountType(weaponId)];
     if (!w) return power;
     const gs = w.gravityScale ?? 1;
     if (gs <= 0) return power;
 
-    const key = `${weaponId}|${angle.toFixed(1)}|${power.toFixed(3)}|${this.wind.toFixed(3)}`;
+    const key = `${mountType(weaponId)}|${angle.toFixed(1)}|${power.toFixed(3)}|${this.wind.toFixed(3)}`;
     this._trimCache = this._trimCache || new Map();
     if (this._trimCache.has(key)) return this._trimCache.get(key);
 
@@ -406,7 +599,9 @@ class Game {
   /* The enemy runs the same budget: it arms what it can afford from its roster,
      shuffled, so successive volleys are not identical. */
   _armFoe() {
-    const budget = this.battle.enemyFirepower || 40;
+    // an EMP hit last turn takes a bite out of what they can power
+    let budget = this.battle.enemyFirepower || 40;
+    if (this.foeEmp) { budget = Math.round(budget * (1 - this.foeEmp)); this.foeEmp = 0; }
     const pool = (this.foeMounts || ['laser']).slice().sort(() => Math.random() - 0.5);
     const picked = [];
     let load = 0;
@@ -484,7 +679,10 @@ class Game {
          visibly in the air without driving where they land. */
       const fan = (w.splitFan || 13) * Math.PI / 180;
       const spd = w.splitSpeed || 0.07;
-      for (let i = -1; i <= 1; i++) {
+      const n = w.splitCount || 3;
+      const half = (n - 1) / 2;
+      for (let k = 0; k < n; k++) {
+        const i = (k - half) / half;
         const a = heading + i * fan;
         const v = speed * (1 - i * spd);   // note the sign: rotating a shard
         // flatter already shortens its range, so the slower shard must be the
@@ -524,7 +722,8 @@ class Game {
     // gravityScale 0 means a dead-straight beam; windScale 0 means the gale
     // has no purchase on it. This is what separates an Ion Lance from a shell.
     s.vy += G * (w.gravityScale ?? 1);
-    s.vx += this.wind * WIND_ACCEL * (w.windScale ?? 1);
+    const steady = (s.owner === this.player) ? (1 - this.mods.windResist) : 1;
+    s.vx += this.wind * WIND_ACCEL * (w.windScale ?? 1) * steady;
     const d = 1 - (w.drag || 0);
     s.vx *= d; s.vy *= d;
     if (s.homing) {
@@ -547,7 +746,7 @@ class Game {
       for (const pl of [this.player, this.foe]) {
         if (!pl || pl.hp <= 0) continue;
         if (pl === s.owner && s.life < 9) continue;      // don't hit your own building
-        if (Math.abs(s.x - pl.x) < PLATFORM.w / 2 && s.y > pl.y - PLATFORM.h && s.y < pl.y + 8) {
+        if (Math.abs(s.x - pl.x) < (pl.w || PLATFORM.w) / 2 && s.y > pl.y - (pl.h || PLATFORM.h) && s.y < pl.y + 8) {
           return { type: 'platform', platform: pl };
         }
       }
@@ -599,15 +798,16 @@ class Game {
 
      If the arc meets ground before the apex, it stops there instead and says
      so — that is the "over the ridge or through it?" question, answered. */
-  aimPreview(angleOverride, powerOverride, weaponId) {
+  aimPreview(angleOverride, powerOverride, weaponId, fullArc) {
     const pl = this.player;
     if (!pl || pl.hp <= 0) return null;
-    const w = WEAPONS[weaponId || this.owned[0]];
+    const type = mountType(weaponId || this.owned[0]);
+    const w = WEAPONS[type];
     if (!w) return null;
     const angle = angleOverride === undefined ? this.aimAngle : angleOverride;
     const raw = powerOverride === undefined ? this.aimPower : powerOverride;
     // preview through the same fire control the guns use, or it lies
-    const power = clamp(this.trimPower(weaponId || this.owned[0], angle, raw), 0.02, 1);
+    const power = clamp(this.trimPower(type, angle, raw), 0.02, 1);
     const a = angle * Math.PI / 180;
     const speed = power * MAX_SPEED * w.speed;
     const o = this.muzzle(pl, this.aimAngle);
@@ -615,7 +815,7 @@ class Game {
     const ghost = {
       x: o.x, y: o.y,
       vx: Math.cos(a) * speed * pl.facing, vy: -Math.sin(a) * speed,
-      weapon: weaponId || this.owned[0], owner: pl, bore: w.penetrate || 0, life: 0, travelled: 0,
+      weapon: type, owner: pl, bore: w.penetrate || 0, life: 0, travelled: 0,
     };
 
     /* A direct-fire beam has no apex to stop at, and hiding its path would be
@@ -625,7 +825,8 @@ class Game {
        point. A flat or depressed arcing shot has no useful crest either, so it
        gets a short lead-out instead of its whole descending flight. */
     const noArc = (w.gravityScale ?? 1) === 0;
-    const cap = noArc ? 220 : (ghost.vy < 0 ? 130 : 26);
+    const showAll = fullArc || this.mods.fullArc;
+    const cap = noArc ? 220 : (showAll ? 400 : (ghost.vy < 0 ? 130 : 26));
 
     const pts = [{ x: ghost.x, y: ghost.y }];
     let reason = 'cap';
@@ -637,7 +838,7 @@ class Game {
         reason = hit.type === 'spent' ? 'spent' : hit.type === 'out' ? 'cap' : 'blocked';
         break;
       }
-      if (!noArc && rising && ghost.vy >= 0) { reason = 'apex'; break; }
+      if (!showAll && !noArc && rising && ghost.vy >= 0) { reason = 'apex'; break; }
     }
 
     const tip = pts[pts.length - 1];
@@ -685,17 +886,24 @@ class Game {
     // Splash damage: full at the centre, tapering to nothing at blast radius.
     for (const pl of [this.player, this.foe]) {
       if (!pl || pl.hp <= 0) continue;
-      const d = Math.hypot(pl.x - x, (pl.y - PLATFORM.h / 2) - y);
+      const d = Math.hypot(pl.x - x, (pl.y - (pl.h || PLATFORM.h) / 2) - y);
       if (d > blast && pl !== hitPlatform) continue;
       const direct = pl === hitPlatform;
       const falloff = direct ? 1 : clamp(1 - d / blast, 0, 1);
       let raw = w.damage * (0.35 + 0.65 * falloff);
+      // where on the structure it landed decides a great deal
+      raw = this._throughShields(pl, this.zoneAt(pl, x, y), raw);
       if (pl === this.player) {
         raw *= (1 - this.mods.damageReduce);
         if (!direct) raw *= (1 - this.mods.splashReduce);   // baffles vent near misses
       }
       const dmg = Math.round(raw);
       if (dmg > 0) this._damage(pl, dmg, s.owner);
+      if (w.emp && pl === this.foe && s.owner === this.player) {
+        this.foeEmp = Math.max(this.foeEmp || 0, w.emp);
+        this.popups.push({ x: pl.x, y: pl.y - 140, text: 'POWER DOWN',
+                           color: '#7fe8ff', life: 1.3, maxLife: 1.3, vy: -0.8 });
+      }
     }
   }
 
@@ -728,7 +936,7 @@ class Game {
     for (const pl of [this.player, this.foe]) {
       if (!pl || pl.hp <= 0) continue;
       let fell = 0;
-      while (pl.y < WORLD.h - 2 && !this.terrain.supported(pl.x, pl.y, PLATFORM.w / 2 - 6, 3)) {
+      while (pl.y < WORLD.h - 2 && !this.terrain.supported(pl.x, pl.y, (pl.w || PLATFORM.w) / 2 - 6, 3)) {
         pl.y += 2; fell += 2;
         if (fell > 460) break;
       }
@@ -845,13 +1053,17 @@ class Game {
         this.turns++;
         this._rollWind();
         this.fuel = this.maxFuel;
+        this._rechargeShields();
         if (this.mods.regen && this.player.hp > 0 && this.player.hp < this.player.maxHp) {
           const healed = Math.min(this.mods.regen, this.player.maxHp - this.player.hp);
           this.player.hp += healed;
           this.popups.push({ x: this.player.x, y: this.player.y - 120, text: `+${healed}`,
                              color: '#9fd93a', life: 1.1, maxLife: 1.1, vy: -0.9 });
         }
-        this.state = 'aim';
+        // Every turn opens with the arming panel, not just the first.
+        this.state = 'arming';
+        this.aimIndex = 0;
+        if (this.hooks.onTurnStart) this.hooks.onTurnStart();
       }
       this._emitHud();
       return;
@@ -901,8 +1113,13 @@ class Game {
       maxFuel: this.maxFuel,
       modules: this.modules,
       mods: this.mods,
+      shieldLayout: this.shieldLayout,
+      playerWeak: this.playerWeak,
+      foeWeak: this.foeWeak,
       owned: this.owned,
       armed: this.armed,
+      aimIndex: this.aimIndex,
+      currentMount: this.currentMount,
       firepower: this.firepower,
       armedLoad: this.armedLoad,
       foeMounts: this.foeMounts || [],
@@ -912,6 +1129,7 @@ class Game {
       turns: this.turns,
       player: this.player ? { hp: this.player.hp, max: this.player.maxHp } : null,
       foe: this.foe ? { hp: this.foe.hp, max: this.foe.maxHp } : null,
+      ownedCounts: this.ownedCounts,
       canAbility: this.state === 'flight' && !this.abilityUsed &&
         this.shells.some((s) => s.owner === this.player &&
                                 WEAPONS[s.weapon].ability && !s.burst),
@@ -1036,7 +1254,9 @@ class Game {
     if (this.battle) {
       this.terrain.draw(ctx);
       R.platform(ctx, this.foe, this, false);
+      R.armour(ctx, this.foe, this, false);
       R.platform(ctx, this.player, this, true);
+      R.armour(ctx, this.player, this, true);
       if (this.state === 'aim') R.aim(ctx, this);
       for (const s of this.shells) R.shell(ctx, s);
       if (this.state === 'flight') R.abilityPrompt(ctx, this, this.time);

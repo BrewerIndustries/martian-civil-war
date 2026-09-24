@@ -150,8 +150,114 @@ const R = (() => {
   /* An assault platform is a building on wheels — a rolling fortress, not a
      tank. Every mount the platform owns is drawn on it, so the silhouette
      itself tells you how much firepower is about to go downrange. */
+  /* A fortress: the same idea as a platform, dug into the ridge instead of
+     riding on wheels. Wider, taller, more guns, and it cannot be driven off
+     its ground — which also means it makes a much broader target, and the
+     rock under it can still be taken away. */
+  function fortress(ctx, pl, game) {
+    const f = pl.faction;
+    const dead = pl.hp <= 0;
+    const W = pl.w, H = pl.h;
+    const roster = game.foeMounts || ['laser'];
+    const armedSet = roster;
+
+    ctx.save();
+    ctx.translate(pl.x, pl.y);
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.beginPath(); ctx.ellipse(0, 0, W * 0.58, 12, 0, 0, 6.283); ctx.fill();
+    if (dead) ctx.globalAlpha = 0.5;
+
+    // footing sunk into the ground
+    ctx.fillStyle = '#4a4038';
+    rr(ctx, -W / 2 - 6, -22, W + 12, 26, 4); ctx.fill();
+    ctx.strokeStyle = '#2b2520'; ctx.lineWidth = 2;
+    rr(ctx, -W / 2 - 6, -22, W + 12, 26, 4); ctx.stroke();
+
+    // three towers: low flanks, tall keep
+    const towers = [
+      { x: -W * 0.34, w: W * 0.28, h: H * 0.62 },
+      { x: 0,          w: W * 0.36, h: H },
+      { x: W * 0.34,  w: W * 0.28, h: H * 0.68 },
+    ];
+    for (const t of towers) {
+      const g = ctx.createLinearGradient(0, -t.h, 0, 0);
+      g.addColorStop(0, '#8b8378');
+      g.addColorStop(1, '#4f4a44');
+      ctx.fillStyle = g;
+      rr(ctx, t.x - t.w / 2, -t.h, t.w, t.h - 8, 3); ctx.fill();
+      ctx.strokeStyle = '#2f2b27'; ctx.lineWidth = 2;
+      rr(ctx, t.x - t.w / 2, -t.h, t.w, t.h - 8, 3); ctx.stroke();
+
+      // crenellations
+      ctx.fillStyle = '#6d665d';
+      const merlons = Math.max(3, Math.round(t.w / 16));
+      for (let i = 0; i < merlons; i++) {
+        const mx = t.x - t.w / 2 + i * (t.w / merlons);
+        ctx.fillRect(mx, -t.h - 8, t.w / merlons - 4, 9);
+      }
+      // arrow slits, lit while it lives
+      ctx.fillStyle = dead ? 'rgba(30,26,24,.9)' : 'rgba(255,196,120,.8)';
+      const rows = Math.max(2, Math.round(t.h / 34));
+      for (let r = 0; r < rows; r++) {
+        ctx.fillRect(t.x - 2.5, -t.h + 16 + r * 30, 5, 12);
+      }
+    }
+
+    // house colours across the keep
+    ctx.fillStyle = f.primary;
+    ctx.fillRect(-W * 0.18, -H + 14, W * 0.36, 5);
+
+    // emplaced guns along the wall
+    const n = roster.length;
+    roster.forEach((id, i) => {
+      const w = WEAPONS[id];
+      if (!w) return;
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const my = -26 - t * (H * 0.72);
+      const mx = (-W / 2 + 10) * 1;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.scale(-1, 1);
+      ctx.rotate(-pl.barrel * Math.PI / 180);
+      ctx.translate(-(pl.recoil || 0) * 5, 0);
+      ctx.fillStyle = '#3f444d';
+      ctx.beginPath(); ctx.arc(0, 0, 6, 0, 6.283); ctx.fill();
+      ctx.fillStyle = '#6d747f';
+      rr(ctx, 2, -3.6, 24, 7.2, 2); ctx.fill();
+      ctx.fillStyle = dead ? '#3a3f47' : w.tracer;
+      rr(ctx, 23, -4.4, 4, 8.8, 1.5); ctx.fill();
+      ctx.restore();
+    });
+
+    if (dead) {
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#1d1a19'; ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(-W * 0.3, -H * 0.5); ctx.lineTo(-W * 0.05, -H * 0.14);
+      ctx.moveTo(W * 0.12, -H * 0.62); ctx.lineTo(W * 0.34, -H * 0.3);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if (!dead) {
+      const bw = 130, bh = 8, by = pl.y - H - 34;
+      ctx.save();
+      ctx.fillStyle = 'rgba(10,7,6,.8)';
+      rr(ctx, pl.x - bw / 2, by, bw, bh, 3); ctx.fill();
+      const frac = pl.hp / pl.maxHp;
+      ctx.fillStyle = frac > 0.5 ? f.light : frac > 0.25 ? '#f0b04a' : '#e2634a';
+      rr(ctx, pl.x - bw / 2 + 1, by + 1, (bw - 2) * frac, bh - 2, 2); ctx.fill();
+      ctx.fillStyle = '#ffe0a0';
+      ctx.font = 'bold 10px "Trebuchet MS", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`FORTRESS · ${Math.ceil(pl.hp)}`, pl.x, by - 4);
+      ctx.restore();
+    }
+  }
+
   function platform(ctx, pl, game, isPlayer) {
     if (!pl) return;
+    if (pl.fortress) return fortress(ctx, pl, game);
     const f = pl.faction;
     const dead = pl.hp <= 0;
     const x = pl.x, y = pl.y;
@@ -230,7 +336,7 @@ const R = (() => {
     // one barrel per mount, ranged up the face of the building
     const n = roster.length;
     roster.forEach((id, i) => {
-      const w = WEAPONS[id];
+      const w = isPlayer ? mountSpec(id) : WEAPONS[id];
       if (!w) return;
       const t = n === 1 ? 0.5 : i / (n - 1);
       const my = -30 - 12 - t * (storeys * storeyH - 16);
@@ -286,6 +392,63 @@ const R = (() => {
     }
   }
 
+  /* Weak spots and fitted shield segments, drawn over the structure they
+     belong to. Your own are always visible; the enemy's only once a
+     Structural Scanner has read them — the module buys sight, not the
+     vulnerability, which is there either way. */
+  function armour(ctx, pl, game, isPlayer) {
+    if (!pl || pl.hp <= 0) return;
+    const w = pl.w || PLATFORM.w, h = pl.h || PLATFORM.h;
+    const left = pl.x - w / 2, top = pl.y - h;
+    const cw = w / ZONE_COLS, ch = h / ZONE_ROWS;
+    const weak = isPlayer ? (game.playerWeak || []) : (game.foeWeak || []);
+    const showWeak = isPlayer || game.mods.scanner;
+
+    ctx.save();
+    for (let z = 0; z < ZONE_COUNT; z++) {
+      const col = z % ZONE_COLS, row = Math.floor(z / ZONE_COLS);
+      const x = left + col * cw, y = top + row * ch;
+
+      if (showWeak && weak.includes(z)) {
+        const pulse = 0.5 + 0.5 * Math.sin(game.time * 4 + z);
+        ctx.globalAlpha = 0.24 + pulse * 0.26;
+        ctx.strokeStyle = '#ff6a4a';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(x + 2, y + 2, cw - 4, ch - 4);
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#ff6a4a';
+        ctx.font = 'bold 10px "Trebuchet MS", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('!', x + cw / 2, y + ch / 2 + 4);
+      }
+
+      const seg = isPlayer ? game.shieldLayout[z] : null;
+      if (!seg) continue;
+      if (seg.type === 'plate') {
+        const frac = seg.hp / seg.max;
+        ctx.globalAlpha = 0.35 + frac * 0.5;
+        ctx.fillStyle = '#b4a189';
+        rr(ctx, x + 2, y + 2, cw - 4, ch - 4, 3); ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = '#7d6d59'; ctx.lineWidth = 1.5;
+        rr(ctx, x + 2, y + 2, cw - 4, ch - 4, 3); ctx.stroke();
+      } else {
+        const frac = seg.charge / seg.max;
+        if (frac <= 0) continue;
+        const pulse = 0.5 + 0.5 * Math.sin(game.time * 2.5 + z);
+        ctx.globalAlpha = 0.14 + frac * 0.3 + pulse * 0.06;
+        ctx.fillStyle = '#8fd0ff';
+        rr(ctx, x + 1, y + 1, cw - 2, ch - 2, 5); ctx.fill();
+        ctx.globalAlpha = 0.3 + frac * 0.5;
+        ctx.strokeStyle = '#a8e4ff'; ctx.lineWidth = 1.6;
+        rr(ctx, x + 1, y + 1, cw - 2, ch - 2, 5); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   /* ---------- shells ---------- */
 
   function shell(ctx, s) {
@@ -324,78 +487,82 @@ const R = (() => {
 
   function aim(ctx, game) {
     const pl = game.player;
-    if (!pl || pl.hp <= 0) return;
+    if (!pl || pl.hp <= 0 || !game.armed.length) return;
 
-    /* One arc per mount on the platform. A turn is a broadside and every mount
-       flies differently, so this is the actual pattern about to go downrange —
-       which is the only way to aim a fortress that cannot snipe. Each arc still
-       stops at its own apex, so the impact points stay yours to work out. */
-    const arcs = [];
-    for (const id of game.armed) {
-      const w = WEAPONS[id];
+    /* Each armed mount is laid separately, so every one gets its own arc: the
+       gun you are currently laying is drawn bright, the ones already set sit
+       dim behind it. Targeting modules extend what you are allowed to see —
+       a Ballistic Computer plots all the way to impact instead of stopping at
+       the apex, which is a genuine upgrade to how well you can shoot. */
+    const full = game.mods.fullArc;
+    const marker = game.mods.impactMarker || full;
+
+    game.armed.forEach((key, idx) => {
+      const w = mountSpec(key);
+      const type = mountType(key);
+      const sol = game._sol(key);
+      const active = id === game.currentMount;
       const salvo = w.salvo;
       const count = salvo ? salvo.count : 1;
+
       for (let k = 0; k < count; k++) {
         const t = count === 1 ? 0 : (k / (count - 1)) * 2 - 1;
-        const p = game.aimPreview(
-          game.aimAngle + t * (salvo ? salvo.spread : 0),
-          game.aimPower + t * (salvo ? salvo.stagger : 0) / 2, id);
-        if (p && p.points.length > 1) arcs.push({ p, w, lead: k === 0 });
-      }
-    }
-    if (!arcs.length) return;
-    const single = arcs.length === 1;
+        const prev = game.aimPreview(
+          sol.angle + t * (salvo ? salvo.spread : 0),
+          sol.power + t * (salvo ? salvo.stagger : 0) / 2, type, full);
+        if (!prev || prev.points.length < 2) continue;
+        const pts = prev.points;
+        const hue = prev.blocked ? '#ff8a5c' : (w.tracer || '#ffe0a0');
 
-    ctx.save();
-    ctx.lineCap = 'round';
-
-    arcs.forEach(({ p: prev, w, lead }) => {
-      const pts = prev.points;
-      const hue = prev.blocked ? '#ff8a5c' : (w.tracer || '#ffe0a0');
-
-      for (let i = 1; i < pts.length; i++) {
-        const f = 1 - (i / pts.length) * 0.75;
-        ctx.globalAlpha = f * (single ? 0.75 : 0.42);
-        ctx.strokeStyle = hue;
-        ctx.lineWidth = (1 + f * 2.2) * (single ? 1 : 0.7);
-        ctx.beginPath();
-        ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
-        ctx.lineTo(pts[i].x, pts[i].y);
-        ctx.stroke();
-      }
-      if (!lead) return;
-
-      const tip = prev.tip;
-      ctx.globalAlpha = single ? 0.95 : 0.6;
-      if (prev.blocked) {
-        ctx.strokeStyle = '#ff8a5c'; ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.moveTo(tip.x - 6, tip.y - 6); ctx.lineTo(tip.x + 6, tip.y + 6);
-        ctx.moveTo(tip.x + 6, tip.y - 6); ctx.lineTo(tip.x - 6, tip.y + 6);
-        ctx.stroke();
-      } else if (prev.reason === 'spent') {
-        ctx.strokeStyle = hue; ctx.lineWidth = 1.8;
-        ctx.setLineDash([3, 4]);
-        ctx.beginPath(); ctx.arc(tip.x, tip.y, 7, 0, 6.283); ctx.stroke();
-        ctx.setLineDash([]);
-      } else {
-        if (single) {
-          ctx.globalAlpha = 0.28;
-          ctx.setLineDash([3, 6]);
-          ctx.strokeStyle = hue; ctx.lineWidth = 1.4;
+        ctx.save();
+        ctx.lineCap = 'round';
+        for (let i = 1; i < pts.length; i++) {
+          const f = 1 - (i / pts.length) * 0.7;
+          ctx.globalAlpha = f * (active ? 0.8 : 0.22);
+          ctx.strokeStyle = hue;
+          ctx.lineWidth = (1 + f * 2.2) * (active ? 1 : 0.6);
           ctx.beginPath();
-          ctx.moveTo(tip.x, tip.y);
-          ctx.lineTo(tip.x, Math.min(prev.groundY, WORLD.h));
+          ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+          ctx.lineTo(pts[i].x, pts[i].y);
           ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.globalAlpha = 0.95;
         }
-        ctx.strokeStyle = hue; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(tip.x, tip.y, single ? 6 : 4, 0, 6.283); ctx.stroke();
+
+        if (k === 0) {
+          const tip = prev.tip;
+          ctx.globalAlpha = active ? 0.95 : 0.35;
+          if (prev.blocked) {
+            ctx.strokeStyle = '#ff8a5c'; ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.moveTo(tip.x - 6, tip.y - 6); ctx.lineTo(tip.x + 6, tip.y + 6);
+            ctx.moveTo(tip.x + 6, tip.y - 6); ctx.lineTo(tip.x - 6, tip.y + 6);
+            ctx.stroke();
+          } else if (marker && (prev.reason === 'blocked' || full)) {
+            ctx.fillStyle = hue;
+            ctx.beginPath(); ctx.arc(tip.x, tip.y, active ? 5 : 3, 0, 6.283); ctx.fill();
+          } else {
+            ctx.strokeStyle = hue; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(tip.x, tip.y, active ? 6 : 4, 0, 6.283); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+
+      // a tag on the active gun so you know which one you are laying
+      if (active) {
+        const o = game.muzzle(pl, sol.angle);
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = w.tracer;
+        ctx.font = 'bold 11px "Trebuchet MS", sans-serif';
+        ctx.textAlign = 'left';
+        const copies = game.armed.filter((k) => mountType(k) === type).length;
+        const nth = copies > 1 ? ` ${Number(key.split('#')[1]) + 1}` : '';
+        ctx.fillText(`${idx + 1}/${game.armed.length} ${w.name}${nth}`, o.x + 12, o.y - 12);
+        ctx.restore();
       }
     });
-    ctx.globalAlpha = 1;
 
+    ctx.save();
     const pw = 66, ph = 7, bx = pl.x - pw / 2, by = pl.y + 12;
     ctx.fillStyle = 'rgba(10,7,6,.72)';
     rr(ctx, bx, by, pw, ph, 3); ctx.fill();
@@ -483,5 +650,5 @@ const R = (() => {
     ctx.restore();
   }
 
-  return { background, platform, shell, aim, abilityPrompt, particles, popups, rr };
+  return { background, platform, armour, shell, aim, abilityPrompt, particles, popups, rr };
 })();

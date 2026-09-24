@@ -36,7 +36,8 @@
         <span class="score-label">Score</span>
         <span id="hud-score">0</span>
       </div>
-      <button id="btn-arm" class="icon-btn" title="Arm the volley (Tab)">⊞</button>
+      <button id="btn-arm" class="icon-btn" title="Arm the volley (V)">⊞</button>
+      <button id="btn-keys" class="icon-btn" title="Keyboard shortcuts (?)">⌨</button>
       <button id="btn-mute" class="icon-btn" title="Mute (M)">🔊</button>
       <button id="btn-retry" class="icon-btn" title="Restart battle (R)">↻</button>
     </div>
@@ -49,9 +50,18 @@
     <span class="ro wind"><b id="ro-wind">—</b><i>wind</i></span>
     <span class="ro fuel"><b id="ro-fuel">80</b><i>fuel</i><span class="fuel-bar"><span id="ro-fuel-fill"></span></span></span>
     <span class="ro"><b id="ro-turn">Your shot</b><i>turn</i></span>
+    <span class="ro mount"><b id="ro-mount">—</b><i>laying</i></span>
   </div>
 
   <div id="hint" class="hint">Drag back from your platform to aim &amp; fire</div>
+
+  <!-- laying the guns: step through each armed mount, then let fly -->
+  <div id="firebar" class="firebar hidden">
+    <button id="btn-prev-mount" class="fb-step" title="Previous mount ([)">‹</button>
+    <div id="firebar-mounts" class="fb-mounts"></div>
+    <button id="btn-next-mount" class="fb-step" title="Next mount (Enter / ])">›</button>
+    <button id="btn-fire" class="btn primary fb-fire" title="Fire the volley (F)">FIRE ALL</button>
+  </div>
 
   <!-- battle over -->
   <div id="result" class="overlay hidden">
@@ -74,6 +84,63 @@
     </div>
   </div>
 
+  <!-- keyboard reference -->
+  <div id="help" class="overlay hidden">
+    <div class="panel wide">
+      <div class="panel-head">
+        <div>
+          <h2>Keyboard</h2>
+          <p class="sub">Every part of the game can be played without the mouse.</p>
+        </div>
+        <button id="btn-close-help" class="icon-btn">✕</button>
+      </div>
+      <div class="keys-grid">
+        <div class="keys-col">
+          <h3>Arming</h3>
+          <dl>
+            <dt><kbd>V</kbd></dt><dd>open / close the arming panel</dd>
+            <dt><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></dt><dd>move between mounts</dd>
+            <dt><kbd>Space</kbd></dt><dd>arm / hold back the highlighted mount</dd>
+            <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>toggle the first nine mounts</dd>
+            <dt><kbd>Enter</kbd></dt><dd>done — go and lay the guns</dd>
+          </dl>
+          <h3>Driving</h3>
+          <dl>
+            <dt><kbd>A</kbd><kbd>D</kbd></dt><dd>drive left / right (spends fuel)</dd>
+          </dl>
+        </div>
+        <div class="keys-col">
+          <h3>Laying the guns</h3>
+          <dl>
+            <dt><kbd>←</kbd><kbd>→</kbd></dt><dd>elevation</dd>
+            <dt><kbd>↑</kbd><kbd>↓</kbd></dt><dd>charge</dd>
+            <dt><kbd>Shift</kbd> + arrows</dt><dd>coarse adjustment</dd>
+            <dt><kbd>[</kbd><kbd>]</kbd></dt><dd>previous / next mount</dd>
+            <dt><kbd>Enter</kbd></dt><dd>confirm this gun, move to the next</dd>
+            <dt><kbd>F</kbd></dt><dd>fire the whole volley</dd>
+            <dt><kbd>Space</kbd></dt><dd>trigger mid-flight tricks</dd>
+          </dl>
+        </div>
+        <div class="keys-col">
+          <h3>Everywhere</h3>
+          <dl>
+            <dt><kbd>B</kbd></dt><dd>armory</dd>
+            <dt><kbd>C</kbd></dt><dd>campaign map</dd>
+            <dt><kbd>Enter</kbd></dt><dd>confirm / buy / start the highlighted thing</dd>
+            <dt><kbd>Esc</kbd></dt><dd>close whatever is open</dd>
+            <dt><kbd>R</kbd></dt><dd>restart the battle</dd>
+            <dt><kbd>M</kbd></dt><dd>mute</dd>
+            <dt><kbd>?</kbd></dt><dd>this list</dd>
+          </dl>
+        </div>
+      </div>
+      <div class="panel-foot">
+        <span class="legend">A highlighted item is outlined — arrows move it, <b>Enter</b> takes it.</span>
+        <button id="btn-close-help-2" class="btn primary">Got it</button>
+      </div>
+    </div>
+  </div>
+
   <!-- arming: choose the volley before you aim -->
   <div id="arming" class="overlay hidden">
     <div class="panel wide">
@@ -91,12 +158,23 @@
         <span class="fp-label"><b id="fp-used">0</b> / <span id="fp-cap">0</span> firepower</span>
       </div>
 
-      <div id="arming-grid" class="arming-grid"></div>
+      <div class="arming-split">
+        <div class="arming-left">
+          <div id="arming-grid" class="arming-grid"></div>
+        </div>
+        <div class="arming-right">
+          <h3 class="shield-head">Shields <i>click a zone to cycle</i></h3>
+          <div id="shield-grid" class="shield-grid"></div>
+          <div id="shield-stock" class="shield-stock"></div>
+          <p class="shield-note">Red zones are your weak spots — they take double damage.
+            Plates soak until they are gone; screens cut 55% and recharge between volleys.</p>
+        </div>
+      </div>
       <div id="arming-fitted" class="arming-fitted"></div>
 
       <div class="panel-foot">
         <span class="legend">Click a mount to arm or hold it back · <b>1–9</b> toggle · <b>Tab</b> reopen</span>
-        <button id="btn-ready" class="btn primary">Ready</button>
+        <button id="btn-ready" class="btn primary">Lay the Guns →</button>
       </div>
     </div>
   </div>
