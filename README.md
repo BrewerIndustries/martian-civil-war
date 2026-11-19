@@ -146,6 +146,22 @@ the campaign map, **M** mutes.
   bar over each platform. Undermine the ground beneath a platform and it falls
   — and takes damage on landing.
 
+## Hosting
+
+GitHub Pages, one site for both builds (`.github/workflows/pages.yml`, lives on `dev`):
+
+| Build | Branch | URL |
+|---|---|---|
+| prod | `main` | https://martian-civil-war.dabrewer.dev/ |
+| dev | `dev` | https://martian-civil-war.dabrewer.dev/dev/ |
+
+Every push to `dev` redeploys both (it checks out `main` into `/` and `dev` into
+`/dev/`). Merging to `main` does **not** redeploy on its own — push to `dev` or
+use "Run workflow". Promote `dev` → `main` by PR. DNS is a DNS-only
+`CNAME martian-civil-war → brewerindustries.github.io` on Cloudflare.
+
+Prod and dev share an origin, so they share saved progress in `localStorage`.
+
 ## Running it
 
 No build step and no dependencies — it's a static site.
