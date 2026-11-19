@@ -1,19 +1,26 @@
 {
   "id": "martian-civil-war",
   "name": "Martian Civil War",
-  "description": "Artillery duel on a dying Mars \u2014 Red Martians against Green. Crew an assault platform (a building on wheels) and trade broadsides across fully destructible terrain: arc over the ridge, or bore a tunnel through it and fire down the corridor. Every mount you own fires each turn; an armory of permanent weapon mounts plus hull, shield and drive modules; wind, fuel-driven repositioning, and an enemy gunner that ranges you better as the campaign goes on.",
+  "description": "Artillery duel on a dying Mars — Red Martians against Green. Crew an assault platform (a building on wheels) and trade broadsides across fully destructible terrain: arc over the ridge, or bore a tunnel through it and fire down the corridor. Every mount you own fires each turn; an armory of permanent weapon mounts plus hull, shield and drive modules; wind, fuel-driven repositioning, and an enemy gunner that ranges you better as the campaign goes on.",
   "category": "games",
   "tech": [
     "Vanilla JS",
     "HTML5 Canvas",
     "bitmask destructible terrain",
     "no dependencies",
-    "static site"
+    "static site",
+    "GitHub Pages"
   ],
   "status": {
-    "prod": "in_progress",
-    "dev": "in_progress"
+    "prod": "live",
+    "dev": "live"
   },
-  "deploy": {},
-  "notes": "Deploy target is itch.io (butler, html5 channels), not GitHub Pages. Not published yet; runs locally via serve.py."
+  "deploy": {
+    "prod": {
+      "url": "https://martian-civil-war.dabrewer.dev/"
+    },
+    "dev": {
+      "url": "https://martian-civil-war.dabrewer.dev/dev/"
+    }
+  }
 }
